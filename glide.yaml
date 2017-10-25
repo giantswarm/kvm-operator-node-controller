@@ -1,0 +1,33 @@
+package: github.com/giantswarm/kvm-operator-node-controller
+import:
+- package: github.com/golang/glog
+- package: k8s.io/api
+  version: 409c3b2393cd3359f275bd8b883b4d9c5aec41f6
+  subpackages:
+  - core/v1
+- package: k8s.io/apimachinery
+  version: e9a29eff7d472df0f7da9ead5ab59b74e74a07ec
+  subpackages:
+  - pkg/api/errors
+  - pkg/apis/meta/v1
+  - pkg/types
+  - pkg/util/runtime
+  - pkg/util/wait
+- package: k8s.io/client-go
+  version: 076e344c86e52f088b78615f815b245f6d613537
+  subpackages:
+  - kubernetes
+  - plugin/pkg/client/auth
+  - tools/clientcmd
+- package: k8s.io/kubernetes
+  version: 5b442382149e16c8d62a61985008aa298537e9f2
+  subpackages:
+  - pkg/api/v1/node
+  - pkg/api/v1/pod
+  - pkg/cloudprovider
+  - pkg/controller
+testImport:
+- package: github.com/stretchr/testify
+  version: 2aa2c176b9dab406a6970f6a55f513e8a8c8b18f
+  subpackages:
+  - assert
