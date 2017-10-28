@@ -23,6 +23,7 @@ import (
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
 	"k8s.io/kubernetes/federation/apis/federation"
+	"k8s.io/kubernetes/pkg/api"
 )
 
 // Registry is an interface implemented by things that know how to store Cluster objects.
@@ -72,7 +73,7 @@ func (s *storage) CreateCluster(ctx genericapirequest.Context, cluster *federati
 }
 
 func (s *storage) UpdateCluster(ctx genericapirequest.Context, cluster *federation.Cluster) error {
-	_, _, err := s.Update(ctx, cluster.Name, rest.DefaultUpdatedObjectInfo(cluster))
+	_, _, err := s.Update(ctx, cluster.Name, rest.DefaultUpdatedObjectInfo(cluster, api.Scheme))
 	return err
 }
 

@@ -17,10 +17,6 @@ limitations under the License.
 package algorithmprovider
 
 import (
-	"k8s.io/kubernetes/plugin/pkg/scheduler/algorithmprovider/defaults"
+	// Import defaults of algorithmprovider for initialization.
+	_ "k8s.io/kubernetes/plugin/pkg/scheduler/algorithmprovider/defaults"
 )
-
-// ApplyFeatureGates applies algorithm by feature gates.
-func ApplyFeatureGates() {
-	defaults.ApplyFeatureGates()
-}

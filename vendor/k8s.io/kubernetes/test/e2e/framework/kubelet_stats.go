@@ -33,12 +33,11 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 
-	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	stats "k8s.io/kubernetes/pkg/kubelet/apis/stats/v1alpha1"
-	dockermetrics "k8s.io/kubernetes/pkg/kubelet/dockershim/metrics"
 	kubeletmetrics "k8s.io/kubernetes/pkg/kubelet/metrics"
 	"k8s.io/kubernetes/pkg/master/ports"
-	"k8s.io/kubernetes/test/e2e/framework/metrics"
+	"k8s.io/kubernetes/pkg/metrics"
 
 	"github.com/prometheus/common/model"
 )
@@ -69,7 +68,7 @@ func getKubeletMetricsFromNode(c clientset.Interface, nodeName string) (metrics.
 	if c == nil {
 		return metrics.GrabKubeletMetricsWithoutProxy(nodeName)
 	}
-	grabber, err := metrics.NewMetricsGrabber(c, nil, true, false, false, false, false)
+	grabber, err := metrics.NewMetricsGrabber(c, true, false, false, false)
 	if err != nil {
 		return metrics.KubeletMetrics{}, err
 	}
@@ -105,7 +104,7 @@ func GetKubeletLatencyMetrics(ms metrics.KubeletMetrics) KubeletLatencyMetrics {
 		kubeletmetrics.PodWorkerStartLatencyKey,
 		kubeletmetrics.PodStartLatencyKey,
 		kubeletmetrics.CgroupManagerOperationsKey,
-		dockermetrics.DockerOperationsLatencyKey,
+		kubeletmetrics.DockerOperationsLatencyKey,
 		kubeletmetrics.PodWorkerStartLatencyKey,
 		kubeletmetrics.PLEGRelistLatencyKey,
 	)
@@ -236,9 +235,9 @@ func getNodeRuntimeOperationErrorRate(c clientset.Interface, node string) (NodeR
 	}
 	// If no corresponding metrics are found, the returned samples will be empty. Then the following
 	// loop will be skipped automatically.
-	allOps := ms[dockermetrics.DockerOperationsKey]
-	errOps := ms[dockermetrics.DockerOperationsErrorsKey]
-	timeoutOps := ms[dockermetrics.DockerOperationsTimeoutKey]
+	allOps := ms[kubeletmetrics.DockerOperationsKey]
+	errOps := ms[kubeletmetrics.DockerOperationsErrorsKey]
+	timeoutOps := ms[kubeletmetrics.DockerOperationsTimeoutKey]
 	for _, sample := range allOps {
 		operation := string(sample.Metric["operation_type"])
 		result[operation] = &RuntimeOperationErrorRate{TotalNumber: float64(sample.Value)}
@@ -619,7 +618,7 @@ func (r *resourceCollector) collectStats(oldStatsMap map[string]*stats.Container
 		}
 
 		if oldStats, ok := oldStatsMap[name]; ok {
-			if oldStats.CPU.Time.Equal(&cStats.CPU.Time) {
+			if oldStats.CPU.Time.Equal(cStats.CPU.Time) {
 				// No change -> skip this stat.
 				continue
 			}

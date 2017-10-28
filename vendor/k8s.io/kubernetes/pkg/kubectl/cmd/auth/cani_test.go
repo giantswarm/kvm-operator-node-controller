@@ -124,9 +124,8 @@ func TestRunAccessCheck(t *testing.T) {
 			APIRegistry:          api.Registry,
 			NegotiatedSerializer: ns,
 			Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
-				expectPath := "/apis/authorization.k8s.io/v1/selfsubjectaccessreviews"
-				if req.URL.Path != expectPath {
-					t.Errorf("%s: expected %v, got %v", test.name, expectPath, req.URL.Path)
+				if req.URL.Path != "/apis/authorization.k8s.io/v1/selfsubjectaccessreviews" {
+					t.Errorf("%s: %v", test.name, req.URL.Path)
 					return nil, nil
 				}
 				bodyBits, err := ioutil.ReadAll(req.Body)

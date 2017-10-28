@@ -1,5 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["notice"])
+
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
@@ -9,8 +11,8 @@ load(
 go_test(
     name = "go_default_test",
     srcs = ["node_authorizer_test.go"],
-    importpath = "k8s.io/kubernetes/plugin/pkg/auth/authorizer/node",
     library = ":go_default_library",
+    tags = ["automanaged"],
     deps = [
         "//pkg/api:go_default_library",
         "//pkg/auth/nodeidentifier:go_default_library",
@@ -28,7 +30,7 @@ go_library(
         "graph_populator.go",
         "node_authorizer.go",
     ],
-    importpath = "k8s.io/kubernetes/plugin/pkg/auth/authorizer/node",
+    tags = ["automanaged"],
     deps = [
         "//pkg/api:go_default_library",
         "//pkg/api/persistentvolume:go_default_library",

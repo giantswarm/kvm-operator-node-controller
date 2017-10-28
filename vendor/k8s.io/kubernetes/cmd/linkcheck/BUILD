@@ -1,5 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["notice"])
+
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_binary",
@@ -8,14 +10,14 @@ load(
 
 go_binary(
     name = "linkcheck",
-    importpath = "k8s.io/kubernetes/cmd/linkcheck",
     library = ":go_default_library",
+    tags = ["automanaged"],
 )
 
 go_library(
     name = "go_default_library",
     srcs = ["links.go"],
-    importpath = "k8s.io/kubernetes/cmd/linkcheck",
+    tags = ["automanaged"],
     deps = [
         "//vendor/github.com/mvdan/xurls:go_default_library",
         "//vendor/github.com/spf13/pflag:go_default_library",

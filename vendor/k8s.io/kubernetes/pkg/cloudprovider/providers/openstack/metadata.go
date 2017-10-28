@@ -28,29 +28,21 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
+	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/mount"
-	"k8s.io/utils/exec"
 )
 
-const (
-	// metadataUrl is URL to OpenStack metadata server. It's hardcoded IPv4
-	// link-local address as documented in "OpenStack Cloud Administrator Guide",
-	// chapter Compute - Networking with nova-network.
-	// https://docs.openstack.org/admin-guide/compute-networking-nova.html#metadata-service
-	metadataUrl = "http://169.254.169.254/openstack/2012-08-10/meta_data.json"
+// metadataUrl is URL to OpenStack metadata server. It's hardcoded IPv4
+// link-local address as documented in "OpenStack Cloud Administrator Guide",
+// chapter Compute - Networking with nova-network.
+// http://docs.openstack.org/admin-guide-cloud/compute-networking-nova.html#metadata-service
+const metadataUrl = "http://169.254.169.254/openstack/2012-08-10/meta_data.json"
 
-	// metadataID is used as an identifier on the metadata search order configuration.
-	metadataID = "metadataService"
-
-	// Config drive is defined as an iso9660 or vfat (deprecated) drive
-	// with the "config-2" label.
-	// http://docs.openstack.org/user-guide/cli-config-drive.html
-	configDriveLabel = "config-2"
-	configDrivePath  = "openstack/2012-08-10/meta_data.json"
-
-	// configDriveID is used as an identifier on the metadata search order configuration.
-	configDriveID = "configDrive"
-)
+// Config drive is defined as an iso9660 or vfat (deprecated) drive
+// with the "config-2" label.
+// http://docs.openstack.org/user-guide/cli-config-drive.html
+const configDriveLabel = "config-2"
+const configDrivePath = "openstack/2012-08-10/meta_data.json"
 
 var ErrBadMetadata = errors.New("Invalid OpenStack metadata, got empty uuid")
 
@@ -63,7 +55,7 @@ type Metadata struct {
 	// .. and other fields we don't care about.  Expand as necessary.
 }
 
-// parseMetadata reads JSON from OpenStack metadata server and parses
+// parseMetadataUUID reads JSON from OpenStack metadata server and parses
 // instance ID out of it.
 func parseMetadata(r io.Reader) (*Metadata, error) {
 	var metadata Metadata
@@ -149,28 +141,12 @@ func getMetadataFromMetadataService() (*Metadata, error) {
 // Metadata is fixed for the current host, so cache the value process-wide
 var metadataCache *Metadata
 
-func getMetadata(order string) (*Metadata, error) {
+func getMetadata() (*Metadata, error) {
 	if metadataCache == nil {
-		var md *Metadata
-		var err error
-
-		elements := strings.Split(order, ",")
-		for _, id := range elements {
-			id = strings.TrimSpace(id)
-			switch id {
-			case configDriveID:
-				md, err = getMetadataFromConfigDrive()
-			case metadataID:
-				md, err = getMetadataFromMetadataService()
-			default:
-				err = fmt.Errorf("%s is not a valid metadata search order option. Supported options are %s and %s", id, configDriveID, metadataID)
-			}
-
-			if err == nil {
-				break
-			}
+		md, err := getMetadataFromConfigDrive()
+		if err != nil {
+			md, err = getMetadataFromMetadataService()
 		}
-
 		if err != nil {
 			return nil, err
 		}

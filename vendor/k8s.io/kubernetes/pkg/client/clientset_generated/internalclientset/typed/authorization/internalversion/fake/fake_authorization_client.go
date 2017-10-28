@@ -34,10 +34,6 @@ func (c *FakeAuthorization) SelfSubjectAccessReviews() internalversion.SelfSubje
 	return &FakeSelfSubjectAccessReviews{c}
 }
 
-func (c *FakeAuthorization) SelfSubjectRulesReviews() internalversion.SelfSubjectRulesReviewInterface {
-	return &FakeSelfSubjectRulesReviews{c}
-}
-
 func (c *FakeAuthorization) SubjectAccessReviews() internalversion.SubjectAccessReviewInterface {
 	return &FakeSubjectAccessReviews{c}
 }

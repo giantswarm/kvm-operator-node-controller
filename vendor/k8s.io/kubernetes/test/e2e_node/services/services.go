@@ -39,7 +39,14 @@ type E2EServices struct {
 	monitorParent bool
 	services      *server
 	kubelet       *server
-	logs          logFiles
+	logFiles      map[string]logFileData
+}
+
+// logFileData holds data about logfiles to fetch with a journalctl command or
+// symlink from a node's file system.
+type logFileData struct {
+	files             []string
+	journalctlCommand []string
 }
 
 // NewE2EServices returns a new E2EServices instance.
@@ -47,7 +54,11 @@ func NewE2EServices(monitorParent bool) *E2EServices {
 	return &E2EServices{
 		monitorParent: monitorParent,
 		// Special log files that need to be collected for additional debugging.
-		logs: getLogFiles(),
+		logFiles: map[string]logFileData{
+			"kern.log":       {[]string{"/var/log/kern.log"}, []string{"-k"}},
+			"docker.log":     {[]string{"/var/log/docker.log", "/var/log/upstart/docker.log"}, []string{"-u", "docker"}},
+			"cloud-init.log": {[]string{"/var/log/cloud-init.log"}, []string{"-u", "cloud*"}},
+		},
 	}
 }
 
@@ -80,7 +91,7 @@ func (e *E2EServices) Stop() {
 	defer func() {
 		if !framework.TestContext.NodeConformance {
 			// Collect log files.
-			e.collectLogFiles()
+			e.getLogFiles()
 		}
 	}()
 	if e.services != nil {
@@ -134,25 +145,25 @@ func (e *E2EServices) startInternalServices() (*server, error) {
 	return server, server.start()
 }
 
-// collectLogFiles collects logs of interest either via journalctl or by creating sym
+// getLogFiles gets logs of interest either via journalctl or by creating sym
 // links. Since we scp files from the remote directory, symlinks will be
 // treated as normal files and file contents will be copied over.
-func (e *E2EServices) collectLogFiles() {
+func (e *E2EServices) getLogFiles() {
 	// Nothing to do if report dir is not specified.
 	if framework.TestContext.ReportDir == "" {
 		return
 	}
 	glog.Info("Fetching log files...")
 	journaldFound := isJournaldAvailable()
-	for targetFileName, log := range e.logs {
+	for targetFileName, logFileData := range e.logFiles {
 		targetLink := path.Join(framework.TestContext.ReportDir, targetFileName)
 		if journaldFound {
 			// Skip log files that do not have an equivalent in journald-based machines.
-			if len(log.JournalctlCommand) == 0 {
+			if len(logFileData.journalctlCommand) == 0 {
 				continue
 			}
-			glog.Infof("Get log file %q with journalctl command %v.", targetFileName, log.JournalctlCommand)
-			out, err := exec.Command("journalctl", log.JournalctlCommand...).CombinedOutput()
+			glog.Infof("Get log file %q with journalctl command %v.", targetFileName, logFileData.journalctlCommand)
+			out, err := exec.Command("journalctl", logFileData.journalctlCommand...).CombinedOutput()
 			if err != nil {
 				glog.Errorf("failed to get %q from journald: %v, %v", targetFileName, string(out), err)
 			} else {
@@ -162,7 +173,7 @@ func (e *E2EServices) collectLogFiles() {
 			}
 			continue
 		}
-		for _, file := range log.Files {
+		for _, file := range logFileData.files {
 			if _, err := os.Stat(file); err != nil {
 				// Expected file not found on this distro.
 				continue

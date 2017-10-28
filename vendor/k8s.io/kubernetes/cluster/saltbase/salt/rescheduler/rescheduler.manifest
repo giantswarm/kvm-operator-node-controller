@@ -32,5 +32,4 @@ spec:
   volumes:
   - hostPath:
       path: /var/log/rescheduler.log
-      type: FileOrCreate
     name: logfile

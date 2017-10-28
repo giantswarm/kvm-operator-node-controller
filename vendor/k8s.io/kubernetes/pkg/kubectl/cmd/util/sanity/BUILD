@@ -1,3 +1,5 @@
+licenses(["notice"])
+
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
@@ -6,7 +8,7 @@ load(
 go_library(
     name = "go_default_library",
     srcs = ["cmd_sanity.go"],
-    importpath = "k8s.io/kubernetes/pkg/kubectl/cmd/util/sanity",
+    tags = ["automanaged"],
     visibility = [
         "//build/visible_to:pkg_kubectl_cmd_util_sanity_CONSUMERS",
     ],

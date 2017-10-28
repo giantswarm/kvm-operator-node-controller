@@ -21,11 +21,10 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/api/core/v1"
+	"github.com/golang/glog"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
-
-	"github.com/golang/glog"
+	"k8s.io/kubernetes/pkg/api/v1"
 )
 
 var (
@@ -94,17 +93,12 @@ func (cache *schedulerCache) UpdateNodeNameToInfoMap(nodeNameToInfo map[string]*
 }
 
 func (cache *schedulerCache) List(selector labels.Selector) ([]*v1.Pod, error) {
-	alwaysTrue := func(p *v1.Pod) bool { return true }
-	return cache.FilteredList(alwaysTrue, selector)
-}
-
-func (cache *schedulerCache) FilteredList(podFilter PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 	var pods []*v1.Pod
 	for _, info := range cache.nodes {
 		for _, pod := range info.pods {
-			if podFilter(pod) && selector.Matches(labels.Set(pod.Labels)) {
+			if selector.Matches(labels.Set(pod.Labels)) {
 				pods = append(pods, pod)
 			}
 		}
@@ -193,7 +187,7 @@ func (cache *schedulerCache) addPod(pod *v1.Pod) {
 		n = NewNodeInfo()
 		cache.nodes[pod.Spec.NodeName] = n
 	}
-	n.AddPod(pod)
+	n.addPod(pod)
 }
 
 // Assumes that lock is already acquired.
@@ -208,7 +202,7 @@ func (cache *schedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 // Assumes that lock is already acquired.
 func (cache *schedulerCache) removePod(pod *v1.Pod) error {
 	n := cache.nodes[pod.Spec.NodeName]
-	if err := n.RemovePod(pod); err != nil {
+	if err := n.removePod(pod); err != nil {
 		return err
 	}
 	if len(n.pods) == 0 && n.node == nil {
@@ -305,39 +299,6 @@ func (cache *schedulerCache) RemovePod(pod *v1.Pod) error {
 		return fmt.Errorf("pod state wasn't added but get removed. Pod key: %v", key)
 	}
 	return nil
-}
-
-func (cache *schedulerCache) IsAssumedPod(pod *v1.Pod) (bool, error) {
-	key, err := getPodKey(pod)
-	if err != nil {
-		return false, err
-	}
-
-	cache.mu.Lock()
-	defer cache.mu.Unlock()
-
-	b, found := cache.assumedPods[key]
-	if !found {
-		return false, nil
-	}
-	return b, nil
-}
-
-func (cache *schedulerCache) GetPod(pod *v1.Pod) (*v1.Pod, error) {
-	key, err := getPodKey(pod)
-	if err != nil {
-		return nil, err
-	}
-
-	cache.mu.Lock()
-	defer cache.mu.Unlock()
-
-	podState, ok := cache.podStates[key]
-	if !ok {
-		return nil, fmt.Errorf("pod %v does not exist", key)
-	}
-
-	return podState.pod, nil
 }
 
 func (cache *schedulerCache) AddNode(node *v1.Node) error {

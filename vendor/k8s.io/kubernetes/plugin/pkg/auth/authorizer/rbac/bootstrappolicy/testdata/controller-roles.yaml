@@ -1,6 +1,6 @@
 apiVersion: v1
 items:
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -48,7 +48,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -87,7 +87,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -125,12 +125,6 @@ items:
     verbs:
     - update
   - apiGroups:
-    - batch
-    resources:
-    - cronjobs/finalizers
-    verbs:
-    - update
-  - apiGroups:
     - ""
     resources:
     - pods
@@ -145,7 +139,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -156,7 +150,6 @@ items:
     name: system:controller:daemon-set-controller
   rules:
   - apiGroups:
-    - apps
     - extensions
     resources:
     - daemonsets
@@ -165,17 +158,9 @@ items:
     - list
     - watch
   - apiGroups:
-    - apps
     - extensions
     resources:
     - daemonsets/status
-    verbs:
-    - update
-  - apiGroups:
-    - apps
-    - extensions
-    resources:
-    - daemonsets/finalizers
     verbs:
     - update
   - apiGroups:
@@ -220,7 +205,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -245,13 +230,6 @@ items:
     - extensions
     resources:
     - deployments/status
-    verbs:
-    - update
-  - apiGroups:
-    - apps
-    - extensions
-    resources:
-    - deployments/finalizers
     verbs:
     - update
   - apiGroups:
@@ -283,7 +261,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -348,7 +326,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -391,7 +369,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -420,7 +398,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -479,21 +457,18 @@ items:
     - 'http:heapster:'
     - 'https:heapster:'
     resources:
+    - services
+    verbs:
+    - proxy
+  - apiGroups:
+    - ""
+    resourceNames:
+    - 'http:heapster:'
+    - 'https:heapster:'
+    resources:
     - services/proxy
     verbs:
     - get
-  - apiGroups:
-    - metrics.k8s.io
-    resources:
-    - pods
-    verbs:
-    - list
-  - apiGroups:
-    - custom.metrics.k8s.io
-    resources:
-    - '*'
-    verbs:
-    - list
   - apiGroups:
     - ""
     resources:
@@ -502,7 +477,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -528,12 +503,6 @@ items:
     verbs:
     - update
   - apiGroups:
-    - batch
-    resources:
-    - jobs/finalizers
-    verbs:
-    - update
-  - apiGroups:
     - ""
     resources:
     - pods
@@ -551,7 +520,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -586,7 +555,7 @@ items:
     - deletecollection
     - get
     - list
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -634,7 +603,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -730,7 +699,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -754,7 +723,7 @@ items:
     - nodes
     verbs:
     - list
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -780,12 +749,6 @@ items:
     verbs:
     - update
   - apiGroups:
-    - extensions
-    resources:
-    - replicasets/finalizers
-    verbs:
-    - update
-  - apiGroups:
     - ""
     resources:
     - pods
@@ -803,7 +766,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -831,12 +794,6 @@ items:
   - apiGroups:
     - ""
     resources:
-    - replicationcontrollers/finalizers
-    verbs:
-    - update
-  - apiGroups:
-    - ""
-    resources:
     - pods
     verbs:
     - create
@@ -852,7 +809,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -883,7 +840,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -914,7 +871,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -938,7 +895,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -977,7 +934,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:
@@ -1006,12 +963,6 @@ items:
     - apps
     resources:
     - statefulsets/status
-    verbs:
-    - update
-  - apiGroups:
-    - apps
-    resources:
-    - statefulsets/finalizers
     verbs:
     - update
   - apiGroups:
@@ -1051,7 +1002,7 @@ items:
     - create
     - patch
     - update
-- apiVersion: rbac.authorization.k8s.io/v1
+- apiVersion: rbac.authorization.k8s.io/v1beta1
   kind: ClusterRole
   metadata:
     annotations:

@@ -1,5 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["notice"])
+
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
@@ -9,8 +11,8 @@ load(
 go_test(
     name = "go_default_test",
     srcs = ["clusterselector_test.go"],
-    importpath = "k8s.io/kubernetes/federation/pkg/federation-controller/util/clusterselector",
     library = ":go_default_library",
+    tags = ["automanaged"],
     deps = [
         "//federation/apis/federation/v1beta1:go_default_library",
         "//vendor/github.com/stretchr/testify/require:go_default_library",
@@ -20,7 +22,7 @@ go_test(
 go_library(
     name = "go_default_library",
     srcs = ["clusterselector.go"],
-    importpath = "k8s.io/kubernetes/federation/pkg/federation-controller/util/clusterselector",
+    tags = ["automanaged"],
     deps = [
         "//federation/apis/federation/v1beta1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/labels:go_default_library",

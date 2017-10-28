@@ -19,7 +19,10 @@ limitations under the License.
 package mount
 
 import (
+	"bufio"
 	"fmt"
+	"hash/fnv"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
@@ -27,10 +30,8 @@ import (
 	"syscall"
 
 	"github.com/golang/glog"
-	"golang.org/x/sys/unix"
 	"k8s.io/apimachinery/pkg/util/sets"
-	utilio "k8s.io/kubernetes/pkg/util/io"
-	utilexec "k8s.io/utils/exec"
+	utilexec "k8s.io/kubernetes/pkg/util/exec"
 )
 
 const (
@@ -40,8 +41,9 @@ const (
 	expectedNumFieldsPerLine = 6
 	// Location of the mount file to use
 	procMountsPath = "/proc/mounts"
-	// Location of the mountinfo file
-	procMountInfoPath = "/proc/self/mountinfo"
+)
+
+const (
 	// 'fsck' found errors and corrected them
 	fsckErrorsCorrected = 1
 	// 'fsck' found errors but exited without correcting them
@@ -53,117 +55,75 @@ const (
 // kubelet is running in the host's root mount namespace.
 type Mounter struct {
 	mounterPath string
-	withSystemd bool
-}
-
-// New returns a mount.Interface for the current system.
-// It provides options to override the default mounter behavior.
-// mounterPath allows using an alternative to `/bin/mount` for mounting.
-func New(mounterPath string) Interface {
-	return &Mounter{
-		mounterPath: mounterPath,
-		withSystemd: detectSystemd(),
-	}
 }
 
 // Mount mounts source to target as fstype with given options. 'source' and 'fstype' must
 // be an emtpy string in case it's not required, e.g. for remount, or for auto filesystem
-// type, where kernel handles fstype for you. The mount 'options' is a list of options,
+// type, where kernel handles fs type for you. The mount 'options' is a list of options,
 // currently come from mount(8), e.g. "ro", "remount", "bind", etc. If no more option is
 // required, call Mount with an empty string list or nil.
 func (mounter *Mounter) Mount(source string, target string, fstype string, options []string) error {
 	// Path to mounter binary if containerized mounter is needed. Otherwise, it is set to empty.
-	// All Linux distros are expected to be shipped with a mount utility that a support bind mounts.
+	// All Linux distros are expected to be shipped with a mount utility that an support bind mounts.
 	mounterPath := ""
 	bind, bindRemountOpts := isBind(options)
 	if bind {
-		err := mounter.doMount(mounterPath, defaultMountCommand, source, target, fstype, []string{"bind"})
+		err := doMount(mounterPath, defaultMountCommand, source, target, fstype, []string{"bind"})
 		if err != nil {
 			return err
 		}
-		return mounter.doMount(mounterPath, defaultMountCommand, source, target, fstype, bindRemountOpts)
+		return doMount(mounterPath, defaultMountCommand, source, target, fstype, bindRemountOpts)
 	}
 	// The list of filesystems that require containerized mounter on GCI image cluster
 	fsTypesNeedMounter := sets.NewString("nfs", "glusterfs", "ceph", "cifs")
 	if fsTypesNeedMounter.Has(fstype) {
 		mounterPath = mounter.mounterPath
 	}
-	return mounter.doMount(mounterPath, defaultMountCommand, source, target, fstype, options)
+	return doMount(mounterPath, defaultMountCommand, source, target, fstype, options)
+}
+
+// isBind detects whether a bind mount is being requested and makes the remount options to
+// use in case of bind mount, due to the fact that bind mount doesn't respect mount options.
+// The list equals:
+//   options - 'bind' + 'remount' (no duplicate)
+func isBind(options []string) (bool, []string) {
+	bindRemountOpts := []string{"remount"}
+	bind := false
+
+	if len(options) != 0 {
+		for _, option := range options {
+			switch option {
+			case "bind":
+				bind = true
+				break
+			case "remount":
+				break
+			default:
+				bindRemountOpts = append(bindRemountOpts, option)
+			}
+		}
+	}
+
+	return bind, bindRemountOpts
 }
 
 // doMount runs the mount command. mounterPath is the path to mounter binary if containerized mounter is used.
-func (m *Mounter) doMount(mounterPath string, mountCmd string, source string, target string, fstype string, options []string) error {
+func doMount(mounterPath string, mountCmd string, source string, target string, fstype string, options []string) error {
 	mountArgs := makeMountArgs(source, target, fstype, options)
 	if len(mounterPath) > 0 {
 		mountArgs = append([]string{mountCmd}, mountArgs...)
 		mountCmd = mounterPath
 	}
 
-	if m.withSystemd {
-		// Try to run mount via systemd-run --scope. This will escape the
-		// service where kubelet runs and any fuse daemons will be started in a
-		// specific scope. kubelet service than can be restarted without killing
-		// these fuse daemons.
-		//
-		// Complete command line (when mounterPath is not used):
-		// systemd-run --description=... --scope -- mount -t <type> <what> <where>
-		//
-		// Expected flow:
-		// * systemd-run creates a transient scope (=~ cgroup) and executes its
-		//   argument (/bin/mount) there.
-		// * mount does its job, forks a fuse daemon if necessary and finishes.
-		//   (systemd-run --scope finishes at this point, returning mount's exit
-		//   code and stdout/stderr - thats one of --scope benefits).
-		// * systemd keeps the fuse daemon running in the scope (i.e. in its own
-		//   cgroup) until the fuse daemon dies (another --scope benefit).
-		//   Kubelet service can be restarted and the fuse daemon survives.
-		// * When the fuse daemon dies (e.g. during unmount) systemd removes the
-		//   scope automatically.
-		//
-		// systemd-mount is not used because it's too new for older distros
-		// (CentOS 7, Debian Jessie).
-		mountCmd, mountArgs = addSystemdScope("systemd-run", target, mountCmd, mountArgs)
-	} else {
-		// No systemd-run on the host (or we failed to check it), assume kubelet
-		// does not run as a systemd service.
-		// No code here, mountCmd and mountArgs are already populated.
-	}
-
 	glog.V(4).Infof("Mounting cmd (%s) with arguments (%s)", mountCmd, mountArgs)
 	command := exec.Command(mountCmd, mountArgs...)
 	output, err := command.CombinedOutput()
 	if err != nil {
-		args := strings.Join(mountArgs, " ")
-		glog.Errorf("Mount failed: %v\nMounting command: %s\nMounting arguments: %s\nOutput: %s\n", err, mountCmd, args, string(output))
-		return fmt.Errorf("mount failed: %v\nMounting command: %s\nMounting arguments: %s\nOutput: %s\n",
-			err, mountCmd, args, string(output))
+		glog.Errorf("Mount failed: %v\nMounting command: %s\nMounting arguments: %s %s %s %v\nOutput: %s\n", err, mountCmd, source, target, fstype, options, string(output))
+		return fmt.Errorf("mount failed: %v\nMounting command: %s\nMounting arguments: %s %s %s %v\nOutput: %s\n",
+			err, mountCmd, source, target, fstype, options, string(output))
 	}
 	return err
-}
-
-// detectSystemd returns true if OS runs with systemd as init. When not sure
-// (permission errors, ...), it returns false.
-// There may be different ways how to detect systemd, this one makes sure that
-// systemd-runs (needed by Mount()) works.
-func detectSystemd() bool {
-	if _, err := exec.LookPath("systemd-run"); err != nil {
-		glog.V(2).Infof("Detected OS without systemd")
-		return false
-	}
-	// Try to run systemd-run --scope /bin/true, that should be enough
-	// to make sure that systemd is really running and not just installed,
-	// which happens when running in a container with a systemd-based image
-	// but with different pid 1.
-	cmd := exec.Command("systemd-run", "--description=Kubernetes systemd probe", "--scope", "true")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		glog.V(2).Infof("Cannot run systemd-run, assuming non-systemd OS")
-		glog.V(4).Infof("systemd-run failed with: %v", err)
-		glog.V(4).Infof("systemd-run output: %s", string(output))
-		return false
-	}
-	glog.V(2).Infof("Detected OS with systemd")
-	return true
 }
 
 // makeMountArgs makes the arguments to the mount(8) command.
@@ -183,13 +143,6 @@ func makeMountArgs(source, target, fstype string, options []string) []string {
 	mountArgs = append(mountArgs, target)
 
 	return mountArgs
-}
-
-// addSystemdScope adds "system-run --scope" to given command line
-func addSystemdScope(systemdRunPath, mountName, command string, args []string) (string, []string) {
-	descriptionArg := fmt.Sprintf("--description=Kubernetes transient mount for %s", mountName)
-	systemdRunArgs := []string{descriptionArg, "--scope", "--", command}
-	return systemdRunPath, append(systemdRunArgs, args...)
 }
 
 // Unmount unmounts the target.
@@ -252,46 +205,51 @@ func (mounter *Mounter) DeviceOpened(pathname string) (bool, error) {
 // PathIsDevice uses FileInfo returned from os.Stat to check if path refers
 // to a device.
 func (mounter *Mounter) PathIsDevice(pathname string) (bool, error) {
-	pathType, err := mounter.GetFileType(pathname)
-	isDevice := pathType == FileTypeCharDev || pathType == FileTypeBlockDev
-	return isDevice, err
+	return pathIsDevice(pathname)
 }
 
 func exclusiveOpenFailsOnDevice(pathname string) (bool, error) {
-	var isDevice bool
-	finfo, err := os.Stat(pathname)
-	if os.IsNotExist(err) {
-		isDevice = false
-	}
-	// err in call to os.Stat
+	isDevice, err := pathIsDevice(pathname)
 	if err != nil {
 		return false, fmt.Errorf(
 			"PathIsDevice failed for path %q: %v",
 			pathname,
 			err)
 	}
-	// path refers to a device
-	if finfo.Mode()&os.ModeDevice != 0 {
-		isDevice = true
-	}
-
 	if !isDevice {
 		glog.Errorf("Path %q is not refering to a device.", pathname)
 		return false, nil
 	}
-	fd, errno := unix.Open(pathname, unix.O_RDONLY|unix.O_EXCL, 0)
+	fd, errno := syscall.Open(pathname, syscall.O_RDONLY|syscall.O_EXCL, 0)
 	// If the device is in use, open will return an invalid fd.
 	// When this happens, it is expected that Close will fail and throw an error.
-	defer unix.Close(fd)
+	defer syscall.Close(fd)
 	if errno == nil {
 		// device not in use
 		return false, nil
-	} else if errno == unix.EBUSY {
+	} else if errno == syscall.EBUSY {
 		// device is in use
 		return true, nil
 	}
 	// error during call to Open
 	return false, errno
+}
+
+func pathIsDevice(pathname string) (bool, error) {
+	finfo, err := os.Stat(pathname)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	// err in call to os.Stat
+	if err != nil {
+		return false, err
+	}
+	// path refers to a device
+	if finfo.Mode()&os.ModeDevice != 0 {
+		return true, nil
+	}
+	// path does not refer to device
+	return false, nil
 }
 
 //GetDeviceNameFromMount: given a mount point, find the device name from its global mount point
@@ -300,109 +258,76 @@ func (mounter *Mounter) GetDeviceNameFromMount(mountPath, pluginDir string) (str
 }
 
 func listProcMounts(mountFilePath string) ([]MountPoint, error) {
-	content, err := utilio.ConsistentRead(mountFilePath, maxListTries)
+	hash1, err := readProcMounts(mountFilePath, nil)
 	if err != nil {
 		return nil, err
 	}
-	return parseProcMounts(content)
+
+	for i := 0; i < maxListTries; i++ {
+		mps := []MountPoint{}
+		hash2, err := readProcMounts(mountFilePath, &mps)
+		if err != nil {
+			return nil, err
+		}
+		if hash1 == hash2 {
+			// Success
+			return mps, nil
+		}
+		hash1 = hash2
+	}
+	return nil, fmt.Errorf("failed to get a consistent snapshot of %v after %d tries", mountFilePath, maxListTries)
 }
 
-func parseProcMounts(content []byte) ([]MountPoint, error) {
-	out := []MountPoint{}
-	lines := strings.Split(string(content), "\n")
-	for _, line := range lines {
-		if line == "" {
-			// the last split() item is empty string following the last \n
-			continue
+// readProcMounts reads the given mountFilePath (normally /proc/mounts) and produces a hash
+// of the contents.  If the out argument is not nil, this fills it with MountPoint structs.
+func readProcMounts(mountFilePath string, out *[]MountPoint) (uint32, error) {
+	file, err := os.Open(mountFilePath)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+	return readProcMountsFrom(file, out)
+}
+
+func readProcMountsFrom(file io.Reader, out *[]MountPoint) (uint32, error) {
+	hash := fnv.New32a()
+	scanner := bufio.NewReader(file)
+	for {
+		line, err := scanner.ReadString('\n')
+		if err == io.EOF {
+			break
 		}
 		fields := strings.Fields(line)
 		if len(fields) != expectedNumFieldsPerLine {
-			return nil, fmt.Errorf("wrong number of fields (expected %d, got %d): %s", expectedNumFieldsPerLine, len(fields), line)
+			return 0, fmt.Errorf("wrong number of fields (expected %d, got %d): %s", expectedNumFieldsPerLine, len(fields), line)
 		}
 
-		mp := MountPoint{
-			Device: fields[0],
-			Path:   fields[1],
-			Type:   fields[2],
-			Opts:   strings.Split(fields[3], ","),
-		}
+		fmt.Fprintf(hash, "%s", line)
 
-		freq, err := strconv.Atoi(fields[4])
-		if err != nil {
-			return nil, err
-		}
-		mp.Freq = freq
+		if out != nil {
+			mp := MountPoint{
+				Device: fields[0],
+				Path:   fields[1],
+				Type:   fields[2],
+				Opts:   strings.Split(fields[3], ","),
+			}
 
-		pass, err := strconv.Atoi(fields[5])
-		if err != nil {
-			return nil, err
-		}
-		mp.Pass = pass
+			freq, err := strconv.Atoi(fields[4])
+			if err != nil {
+				return 0, err
+			}
+			mp.Freq = freq
 
-		out = append(out, mp)
-	}
-	return out, nil
-}
+			pass, err := strconv.Atoi(fields[5])
+			if err != nil {
+				return 0, err
+			}
+			mp.Pass = pass
 
-func (mounter *Mounter) MakeRShared(path string) error {
-	return doMakeRShared(path, procMountInfoPath)
-}
-
-func (mounter *Mounter) GetFileType(pathname string) (FileType, error) {
-	var pathType FileType
-	finfo, err := os.Stat(pathname)
-	if os.IsNotExist(err) {
-		return pathType, fmt.Errorf("path %q does not exist", pathname)
-	}
-	// err in call to os.Stat
-	if err != nil {
-		return pathType, err
-	}
-
-	mode := finfo.Sys().(*syscall.Stat_t).Mode
-	switch mode & syscall.S_IFMT {
-	case syscall.S_IFSOCK:
-		return FileTypeSocket, nil
-	case syscall.S_IFBLK:
-		return FileTypeBlockDev, nil
-	case syscall.S_IFCHR:
-		return FileTypeBlockDev, nil
-	case syscall.S_IFDIR:
-		return FileTypeDirectory, nil
-	case syscall.S_IFREG:
-		return FileTypeFile, nil
-	}
-
-	return pathType, fmt.Errorf("only recognise file, directory, socket, block device and character device")
-}
-
-func (mounter *Mounter) MakeDir(pathname string) error {
-	err := os.MkdirAll(pathname, os.FileMode(0755))
-	if err != nil {
-		if !os.IsExist(err) {
-			return err
+			*out = append(*out, mp)
 		}
 	}
-	return nil
-}
-
-func (mounter *Mounter) MakeFile(pathname string) error {
-	f, err := os.OpenFile(pathname, os.O_CREATE, os.FileMode(0644))
-	defer f.Close()
-	if err != nil {
-		if !os.IsExist(err) {
-			return err
-		}
-	}
-	return nil
-}
-
-func (mounter *Mounter) ExistsPath(pathname string) bool {
-	_, err := os.Stat(pathname)
-	if err != nil {
-		return false
-	}
-	return true
+	return hash.Sum32(), nil
 }
 
 // formatAndMount uses unix utils to format and mount the given disk
@@ -412,7 +337,8 @@ func (mounter *SafeFormatAndMount) formatAndMount(source string, target string, 
 	// Run fsck on the disk to fix repairable issues
 	glog.V(4).Infof("Checking for issues with fsck on disk: %s", source)
 	args := []string{"-a", source}
-	out, err := mounter.Exec.Run("fsck", args...)
+	cmd := mounter.Runner.Command("fsck", args...)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		ee, isExitError := err.(utilexec.ExitError)
 		switch {
@@ -449,7 +375,8 @@ func (mounter *SafeFormatAndMount) formatAndMount(source string, target string, 
 				args = []string{"-F", source}
 			}
 			glog.Infof("Disk %q appears to be unformatted, attempting to format as type: %q with options: %v", source, fstype, args)
-			_, err := mounter.Exec.Run("mkfs."+fstype, args...)
+			cmd := mounter.Runner.Command("mkfs."+fstype, args...)
+			_, err := cmd.CombinedOutput()
 			if err == nil {
 				// the disk has been formatted successfully try to mount it again.
 				glog.Infof("Disk successfully formatted (mkfs): %s - %s %s", fstype, source, target)
@@ -471,11 +398,12 @@ func (mounter *SafeFormatAndMount) formatAndMount(source string, target string, 
 	return mountErr
 }
 
-// getDiskFormat uses 'lsblk' to see if the given disk is unformated
+// diskLooksUnformatted uses 'lsblk' to see if the given disk is unformated
 func (mounter *SafeFormatAndMount) getDiskFormat(disk string) (string, error) {
 	args := []string{"-n", "-o", "FSTYPE", disk}
+	cmd := mounter.Runner.Command("lsblk", args...)
 	glog.V(4).Infof("Attempting to determine if disk %q is formatted using lsblk with args: (%v)", disk, args)
-	dataOut, err := mounter.Exec.Run("lsblk", args...)
+	dataOut, err := cmd.CombinedOutput()
 	output := string(dataOut)
 	glog.V(4).Infof("Output: %q", output)
 
@@ -501,98 +429,4 @@ func (mounter *SafeFormatAndMount) getDiskFormat(disk string) (string, error) {
 	// The device has dependent devices, most probably partitions (LVM, LUKS
 	// and MD RAID are reported as FSTYPE and caught above).
 	return "unknown data, probably partitions", nil
-}
-
-// isShared returns true, if given path is on a mount point that has shared
-// mount propagation.
-func isShared(path string, filename string) (bool, error) {
-	infos, err := parseMountInfo(filename)
-	if err != nil {
-		return false, err
-	}
-
-	// process /proc/xxx/mountinfo in backward order and find the first mount
-	// point that is prefix of 'path' - that's the mount where path resides
-	var info *mountInfo
-	for i := len(infos) - 1; i >= 0; i-- {
-		if strings.HasPrefix(path, infos[i].mountPoint) {
-			info = &infos[i]
-			break
-		}
-	}
-	if info == nil {
-		return false, fmt.Errorf("cannot find mount point for %q", path)
-	}
-
-	// parse optional parameters
-	for _, opt := range info.optional {
-		if strings.HasPrefix(opt, "shared:") {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-type mountInfo struct {
-	mountPoint string
-	// list of "optional parameters", mount propagation is one of them
-	optional []string
-}
-
-// parseMountInfo parses /proc/xxx/mountinfo.
-func parseMountInfo(filename string) ([]mountInfo, error) {
-	content, err := utilio.ConsistentRead(filename, maxListTries)
-	if err != nil {
-		return []mountInfo{}, err
-	}
-	contentStr := string(content)
-	infos := []mountInfo{}
-
-	for _, line := range strings.Split(contentStr, "\n") {
-		if line == "" {
-			// the last split() item is empty string following the last \n
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 7 {
-			return nil, fmt.Errorf("wrong number of fields in (expected %d, got %d): %s", 8, len(fields), line)
-		}
-		info := mountInfo{
-			mountPoint: fields[4],
-			optional:   []string{},
-		}
-		for i := 6; i < len(fields) && fields[i] != "-"; i++ {
-			info.optional = append(info.optional, fields[i])
-		}
-		infos = append(infos, info)
-	}
-	return infos, nil
-}
-
-// doMakeRShared is common implementation of MakeRShared on Linux. It checks if
-// path is shared and bind-mounts it as rshared if needed. mountCmd and
-// mountArgs are expected to contain mount-like command, doMakeRShared will add
-// '--bind <path> <path>' and '--make-rshared <path>' to mountArgs.
-func doMakeRShared(path string, mountInfoFilename string) error {
-	shared, err := isShared(path, mountInfoFilename)
-	if err != nil {
-		return err
-	}
-	if shared {
-		glog.V(4).Infof("Directory %s is already on a shared mount", path)
-		return nil
-	}
-
-	glog.V(2).Infof("Bind-mounting %q with shared mount propagation", path)
-	// mount --bind /var/lib/kubelet /var/lib/kubelet
-	if err := syscall.Mount(path, path, "" /*fstype*/, syscall.MS_BIND, "" /*data*/); err != nil {
-		return fmt.Errorf("failed to bind-mount %s: %v", path, err)
-	}
-
-	// mount --make-rshared /var/lib/kubelet
-	if err := syscall.Mount(path, path, "" /*fstype*/, syscall.MS_SHARED|syscall.MS_REC, "" /*data*/); err != nil {
-		return fmt.Errorf("failed to make %s rshared: %v", path, err)
-	}
-
-	return nil
 }

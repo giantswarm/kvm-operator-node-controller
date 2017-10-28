@@ -19,12 +19,10 @@ package volume
 import (
 	"testing"
 
-	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/kubernetes/pkg/api/v1"
 )
-
-const testPluginName = "kubernetes.io/testPlugin"
 
 func TestSpecSourceConverters(t *testing.T) {
 	v := &v1.Volume{
@@ -64,7 +62,7 @@ func (plugin *testPlugins) Init(host VolumeHost) error {
 }
 
 func (plugin *testPlugins) GetPluginName() string {
-	return testPluginName
+	return "testPlugin"
 }
 
 func (plugin *testPlugins) GetVolumeName(spec *Spec) (string, error) {
@@ -105,26 +103,14 @@ func newTestPlugin() []VolumePlugin {
 
 func TestVolumePluginMgrFunc(t *testing.T) {
 	vpm := VolumePluginMgr{}
-	var prober DynamicPluginProber = nil // TODO (#51147) inject mock
-	vpm.InitPlugins(newTestPlugin(), prober, nil)
+	vpm.InitPlugins(newTestPlugin(), nil)
 
-	plug, err := vpm.FindPluginByName(testPluginName)
+	plug, err := vpm.FindPluginByName("testPlugin")
 	if err != nil {
 		t.Errorf("Can't find the plugin by name")
 	}
-	if plug.GetPluginName() != testPluginName {
+	if plug.GetPluginName() != "testPlugin" {
 		t.Errorf("Wrong name: %s", plug.GetPluginName())
-	}
-
-	plug, err = vpm.FindPluginBySpec(nil)
-	if err == nil {
-		t.Errorf("Should return error if volume spec is nil")
-	}
-
-	volumeSpec := &Spec{}
-	plug, err = vpm.FindPluginBySpec(volumeSpec)
-	if err != nil {
-		t.Errorf("Should return test plugin if volume spec is not nil")
 	}
 }
 

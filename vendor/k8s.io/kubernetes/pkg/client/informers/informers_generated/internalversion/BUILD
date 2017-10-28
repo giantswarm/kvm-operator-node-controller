@@ -1,5 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["notice"])
+
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
@@ -11,7 +13,7 @@ go_library(
         "factory.go",
         "generic.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/client/informers/informers_generated/internalversion",
+    tags = ["automanaged"],
     deps = [
         "//pkg/api:go_default_library",
         "//pkg/apis/admissionregistration:go_default_library",
@@ -23,7 +25,6 @@ go_library(
         "//pkg/apis/networking:go_default_library",
         "//pkg/apis/policy:go_default_library",
         "//pkg/apis/rbac:go_default_library",
-        "//pkg/apis/scheduling:go_default_library",
         "//pkg/apis/settings:go_default_library",
         "//pkg/apis/storage:go_default_library",
         "//pkg/client/clientset_generated/internalclientset:go_default_library",
@@ -38,7 +39,6 @@ go_library(
         "//pkg/client/informers/informers_generated/internalversion/networking:go_default_library",
         "//pkg/client/informers/informers_generated/internalversion/policy:go_default_library",
         "//pkg/client/informers/informers_generated/internalversion/rbac:go_default_library",
-        "//pkg/client/informers/informers_generated/internalversion/scheduling:go_default_library",
         "//pkg/client/informers/informers_generated/internalversion/settings:go_default_library",
         "//pkg/client/informers/informers_generated/internalversion/storage:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
@@ -69,7 +69,6 @@ filegroup(
         "//pkg/client/informers/informers_generated/internalversion/networking:all-srcs",
         "//pkg/client/informers/informers_generated/internalversion/policy:all-srcs",
         "//pkg/client/informers/informers_generated/internalversion/rbac:all-srcs",
-        "//pkg/client/informers/informers_generated/internalversion/scheduling:all-srcs",
         "//pkg/client/informers/informers_generated/internalversion/settings:all-srcs",
         "//pkg/client/informers/informers_generated/internalversion/storage:all-srcs",
     ],

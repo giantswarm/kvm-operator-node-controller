@@ -19,13 +19,11 @@ package v1
 import (
 	"time"
 
-	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	restclient "k8s.io/client-go/rest"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 )
-
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 type Policy struct {
 	metav1.TypeMeta `json:",inline"`
@@ -62,7 +60,7 @@ type PriorityPolicy struct {
 	Argument *PriorityArgument `json:"argument"`
 }
 
-// PredicateArgument represents the arguments to configure predicate functions in scheduler policy configuration.
+// Represents the arguments that the different types of predicates take
 // Only one of its members may be specified
 type PredicateArgument struct {
 	// The predicate that provides affinity for pods belonging to a service
@@ -73,7 +71,7 @@ type PredicateArgument struct {
 	LabelsPresence *LabelsPresence `json:"labelsPresence"`
 }
 
-// PriorityArgument represents the arguments to configure priority functions in scheduler policy configuration.
+// Represents the arguments that the different types of priorities take.
 // Only one of its members may be specified
 type PriorityArgument struct {
 	// The priority function that ensures a good spread (anti-affinity) for pods belonging to a service
@@ -84,14 +82,14 @@ type PriorityArgument struct {
 	LabelPreference *LabelPreference `json:"labelPreference"`
 }
 
-// ServiceAffinity holds the parameters that are used to configure the corresponding predicate in scheduler policy configuration.
+// Holds the parameters that are used to configure the corresponding predicate
 type ServiceAffinity struct {
 	// The list of labels that identify node "groups"
 	// All of the labels should match for the node to be considered a fit for hosting the pod
 	Labels []string `json:"labels"`
 }
 
-// LabelsPresence holds the parameters that are used to configure the corresponding predicate in scheduler policy configuration.
+// Holds the parameters that are used to configure the corresponding predicate
 type LabelsPresence struct {
 	// The list of labels that identify node "groups"
 	// All of the labels should be either present (or absent) for the node to be considered a fit for hosting the pod
@@ -100,13 +98,13 @@ type LabelsPresence struct {
 	Presence bool `json:"presence"`
 }
 
-// ServiceAntiAffinity holds the parameters that are used to configure the corresponding priority function
+// Holds the parameters that are used to configure the corresponding priority function
 type ServiceAntiAffinity struct {
 	// Used to identify node "groups"
 	Label string `json:"label"`
 }
 
-// LabelPreference holds the parameters that are used to configure the corresponding priority function
+// Holds the parameters that are used to configure the corresponding priority function
 type LabelPreference struct {
 	// Used to identify node "groups"
 	Label string `json:"label"`
@@ -116,7 +114,7 @@ type LabelPreference struct {
 	Presence bool `json:"presence"`
 }
 
-// ExtenderConfig holds the parameters used to communicate with the extender. If a verb is unspecified/empty,
+// Holds the parameters used to communicate with the extender. If a verb is unspecified/empty,
 // it is assumed that the extender chose not to provide that extension.
 type ExtenderConfig struct {
 	// URLPrefix at which the extender is available

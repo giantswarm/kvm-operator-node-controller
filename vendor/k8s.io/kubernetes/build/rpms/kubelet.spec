@@ -2,7 +2,7 @@ Name: kubelet
 Version: OVERRIDE_THIS
 Release: 00
 License: ASL 2.0
-Summary: Container Cluster Manager - Kubernetes Node Agent
+Summary: Container Cluster Manager
 
 URL: https://kubernetes.io
 

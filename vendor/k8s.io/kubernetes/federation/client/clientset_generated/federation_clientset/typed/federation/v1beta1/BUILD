@@ -1,5 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["notice"])
+
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
@@ -13,7 +15,7 @@ go_library(
         "federation_client.go",
         "generated_expansion.go",
     ],
-    importpath = "k8s.io/kubernetes/federation/client/clientset_generated/federation_clientset/typed/federation/v1beta1",
+    tags = ["automanaged"],
     deps = [
         "//federation/apis/federation/v1beta1:go_default_library",
         "//federation/client/clientset_generated/federation_clientset/scheme:go_default_library",

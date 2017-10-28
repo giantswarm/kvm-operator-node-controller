@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/blang/semver"
-	dockertypes "github.com/docker/docker/api/types"
+	dockertypes "github.com/docker/engine-api/types"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -50,6 +50,7 @@ func newTestDockerService() (*dockerService, *libdocker.FakeDockerClient, *clock
 		client:            c,
 		os:                &containertest.FakeOS{},
 		network:           pm,
+		legacyCleanup:     legacyCleanupFlag{done: 1},
 		checkpointHandler: NewTestPersistentCheckpointHandler(),
 		networkReady:      make(map[string]bool),
 	}, c, fakeClock

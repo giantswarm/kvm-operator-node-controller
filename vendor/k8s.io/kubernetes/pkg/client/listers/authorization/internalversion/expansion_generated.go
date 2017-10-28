@@ -30,10 +30,6 @@ type LocalSubjectAccessReviewNamespaceListerExpansion interface{}
 // SelfSubjectAccessReviewLister.
 type SelfSubjectAccessReviewListerExpansion interface{}
 
-// SelfSubjectRulesReviewListerExpansion allows custom methods to be added to
-// SelfSubjectRulesReviewLister.
-type SelfSubjectRulesReviewListerExpansion interface{}
-
 // SubjectAccessReviewListerExpansion allows custom methods to be added to
 // SubjectAccessReviewLister.
 type SubjectAccessReviewListerExpansion interface{}

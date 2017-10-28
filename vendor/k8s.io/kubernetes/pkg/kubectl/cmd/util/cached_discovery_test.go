@@ -22,7 +22,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/googleapis/gnostic/OpenAPIv2"
+	"github.com/emicklei/go-restful-swagger12"
+	"github.com/go-openapi/spec"
 	"github.com/stretchr/testify/assert"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -100,6 +101,7 @@ type fakeDiscoveryClient struct {
 	groupCalls    int
 	resourceCalls int
 	versionCalls  int
+	swaggerCalls  int
 	openAPICalls  int
 
 	serverResourcesHandler func() ([]*metav1.APIResourceList, error)
@@ -164,7 +166,12 @@ func (c *fakeDiscoveryClient) ServerVersion() (*version.Info, error) {
 	return &version.Info{}, nil
 }
 
-func (c *fakeDiscoveryClient) OpenAPISchema() (*openapi_v2.Document, error) {
+func (c *fakeDiscoveryClient) SwaggerSchema(version schema.GroupVersion) (*swagger.ApiDeclaration, error) {
+	c.swaggerCalls = c.swaggerCalls + 1
+	return &swagger.ApiDeclaration{}, nil
+}
+
+func (c *fakeDiscoveryClient) OpenAPISchema() (*spec.Swagger, error) {
 	c.openAPICalls = c.openAPICalls + 1
-	return &openapi_v2.Document{}, nil
+	return &spec.Swagger{}, nil
 }

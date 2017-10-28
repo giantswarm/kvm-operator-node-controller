@@ -1,5 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["notice"])
+
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
@@ -9,14 +11,14 @@ load(
 go_library(
     name = "go_default_library",
     srcs = ["env.go"],
-    importpath = "k8s.io/kubernetes/pkg/util/env",
+    tags = ["automanaged"],
 )
 
 go_test(
     name = "go_default_test",
     srcs = ["env_test.go"],
-    importpath = "k8s.io/kubernetes/pkg/util/env",
     library = ":go_default_library",
+    tags = ["automanaged"],
     deps = ["//vendor/github.com/stretchr/testify/assert:go_default_library"],
 )
 

@@ -22,10 +22,10 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/api/core/v1"
 	storageetcd "k8s.io/apiserver/pkg/storage/etcd"
-	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/kubernetes/pkg/api/v1"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	"k8s.io/kubernetes/pkg/kubelet/util"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -282,11 +282,6 @@ func (c *cachingConfigMapManager) RegisterPod(pod *v1.Pod) {
 	c.registeredPods[key] = pod
 	if prev != nil {
 		for name := range getConfigMapNames(prev) {
-			// On an update, the .Add() call above will have re-incremented the
-			// ref count of any existing items, so any configmaps that are in both
-			// names and prev need to have their ref counts decremented. Any that
-			// are only in prev need to be completely removed. This unconditional
-			// call takes care of both cases.
 			c.configMapStore.Delete(prev.Namespace, name)
 		}
 	}

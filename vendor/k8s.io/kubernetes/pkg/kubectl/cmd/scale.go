@@ -26,7 +26,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
-	"k8s.io/kubernetes/pkg/kubectl/util/i18n"
+	"k8s.io/kubernetes/pkg/util/i18n"
 )
 
 var (
@@ -60,7 +60,7 @@ var (
 func NewCmdScale(f cmdutil.Factory, out io.Writer) *cobra.Command {
 	options := &resource.FilenameOptions{}
 
-	validArgs := []string{"deployment", "replicaset", "replicationcontroller", "job", "statefulset"}
+	validArgs := []string{"deployment", "replicaset", "replicationcontroller", "job"}
 	argAliases := kubectl.ResourceAliases(validArgs)
 
 	cmd := &cobra.Command{
@@ -77,8 +77,6 @@ func NewCmdScale(f cmdutil.Factory, out io.Writer) *cobra.Command {
 		ValidArgs:  validArgs,
 		ArgAliases: argAliases,
 	}
-	cmd.Flags().StringP("selector", "l", "", "Selector (label query) to filter on, supports '=', '==', and '!='.(e.g. -l key1=value1,key2=value2)")
-	cmd.Flags().Bool("all", false, "Select all resources in the namespace of the specified resource types")
 	cmd.Flags().String("resource-version", "", i18n.T("Precondition for resource version. Requires that the current resource version match this value in order to scale."))
 	cmd.Flags().Int("current-replicas", -1, "Precondition for current size. Requires that the current size of the resource match this value in order to scale.")
 	cmd.Flags().Int("replicas", -1, "The new desired number of replicas. Required.")
@@ -100,21 +98,17 @@ func RunScale(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []strin
 		return err
 	}
 
-	selector := cmdutil.GetFlagString(cmd, "selector")
-	all := cmdutil.GetFlagBool(cmd, "all")
-
 	mapper, _ := f.Object()
-	r := f.NewBuilder().
+	r := f.NewBuilder(true).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
 		FilenameParam(enforceNamespace, options).
-		ResourceTypeOrNameArgs(all, args...).
+		ResourceTypeOrNameArgs(false, args...).
 		Flatten().
-		SelectorParam(selector).
 		Do()
 	err = r.Err()
 	if resource.IsUsageError(err) {
-		return cmdutil.UsageErrorf(cmd, "%v", err)
+		return cmdutil.UsageError(cmd, err.Error())
 	}
 	if err != nil {
 		return err
@@ -122,7 +116,7 @@ func RunScale(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []strin
 
 	count := cmdutil.GetFlagInt(cmd, "replicas")
 	if count < 0 {
-		return cmdutil.UsageErrorf(cmd, "The --replicas=COUNT flag is required, and COUNT must be greater than or equal to 0")
+		return cmdutil.UsageError(cmd, "The --replicas=COUNT flag is required, and COUNT must be greater than or equal to 0")
 	}
 
 	infos := []*resource.Info{}

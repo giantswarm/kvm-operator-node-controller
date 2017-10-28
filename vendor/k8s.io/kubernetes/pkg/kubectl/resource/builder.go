@@ -17,7 +17,6 @@ limitations under the License.
 package resource
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -26,13 +25,12 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/kubernetes/pkg/kubectl/validation"
+	"k8s.io/kubernetes/pkg/api/validation"
 )
 
 var FileExtensions = []string{".json", ".yaml", ".yml"}
@@ -53,9 +51,8 @@ type Builder struct {
 	stream bool
 	dir    bool
 
-	selector             *string
-	selectAll            bool
-	includeUninitialized bool
+	selector  labels.Selector
+	selectAll bool
 
 	resources []string
 
@@ -67,9 +64,6 @@ type Builder struct {
 
 	defaultNamespace bool
 	requireNamespace bool
-
-	isLocal        bool
-	isUnstructured bool
 
 	flatten bool
 	latest  bool
@@ -86,19 +80,12 @@ type Builder struct {
 	schema validation.Schema
 }
 
-var LocalUnstructuredBuilderError = fmt.Errorf("Unstructured objects cannot be handled with a local builder - Local and Unstructured attributes cannot be used in conjunction")
-
 var missingResourceError = fmt.Errorf(`You must provide one or more resources by argument or filename.
 Example resource specifications include:
    '-f rsrc.yaml'
    '--filename=rsrc.json'
    '<resource> <name>'
    '<resource>'`)
-
-var LocalResourceError = errors.New(`error: you must specify resources by --filename when --local is set.
-Example resource specifications include:
-   '-f rsrc.yaml'
-   '--filename=rsrc.json'`)
 
 // TODO: expand this to include other errors.
 func IsUsageError(err error) bool {
@@ -163,35 +150,6 @@ func (b *Builder) FilenameParam(enforceNamespace bool, filenameOptions *Filename
 	if enforceNamespace {
 		b.RequireNamespace()
 	}
-
-	return b
-}
-
-// Local wraps the builder's clientMapper in a DisabledClientMapperForMapping
-func (b *Builder) Local(mapperFunc ClientMapperFunc) *Builder {
-	if b.isUnstructured {
-		b.errs = append(b.errs, LocalUnstructuredBuilderError)
-		return b
-	}
-
-	b.isLocal = true
-	b.mapper.ClientMapper = DisabledClientForMapping{ClientMapper: ClientMapperFunc(mapperFunc)}
-	return b
-}
-
-// Unstructured updates the builder's ClientMapper, RESTMapper,
-// ObjectTyper, and codec for working with unstructured api objects
-func (b *Builder) Unstructured(mapperFunc ClientMapperFunc, mapper meta.RESTMapper, typer runtime.ObjectTyper) *Builder {
-	if b.isLocal {
-		b.errs = append(b.errs, LocalUnstructuredBuilderError)
-		return b
-	}
-
-	b.isUnstructured = true
-	b.mapper.RESTMapper = mapper
-	b.mapper.ObjectTyper = typer
-	b.mapper.Decoder = unstructured.UnstructuredJSONScheme
-	b.mapper.ClientMapper = ClientMapperFunc(mapperFunc)
 
 	return b
 }
@@ -292,10 +250,14 @@ func (b *Builder) ResourceNames(resource string, names ...string) *Builder {
 
 // SelectorParam defines a selector that should be applied to the object types to load.
 // This will not affect files loaded from disk or URL. If the parameter is empty it is
-// a no-op - to select all resources invoke `b.Selector(labels.Everything.String)`.
+// a no-op - to select all resources invoke `b.Selector(labels.Everything)`.
 func (b *Builder) SelectorParam(s string) *Builder {
-	selector := strings.TrimSpace(s)
-	if len(selector) == 0 {
+	selector, err := labels.Parse(s)
+	if err != nil {
+		b.errs = append(b.errs, fmt.Errorf("the provided selector %q is not valid: %v", s, err))
+		return b
+	}
+	if selector.Empty() {
 		return b
 	}
 	if b.selectAll {
@@ -306,20 +268,14 @@ func (b *Builder) SelectorParam(s string) *Builder {
 }
 
 // Selector accepts a selector directly, and if non nil will trigger a list action.
-func (b *Builder) Selector(selector string) *Builder {
-	b.selector = &selector
+func (b *Builder) Selector(selector labels.Selector) *Builder {
+	b.selector = selector
 	return b
 }
 
 // ExportParam accepts the export boolean for these resources
 func (b *Builder) ExportParam(export bool) *Builder {
 	b.export = export
-	return b
-}
-
-// IncludeUninitialized accepts the include-uninitialized boolean for these resources
-func (b *Builder) IncludeUninitialized(includeUninitialized bool) *Builder {
-	b.includeUninitialized = includeUninitialized
 	return b
 }
 
@@ -403,8 +359,7 @@ func (b *Builder) ResourceTypeOrNameArgs(allowEmptySelector bool, args ...string
 	case len(args) == 1:
 		b.ResourceTypes(SplitResourceArgument(args[0])...)
 		if b.selector == nil && allowEmptySelector {
-			selector := labels.Everything().String()
-			b.selector = &selector
+			b.selector = labels.Everything()
 		}
 	case len(args) == 0:
 	default:
@@ -592,8 +547,7 @@ func (b *Builder) visitorResult() *Result {
 	}
 
 	if b.selectAll {
-		selector := labels.Everything().String()
-		b.selector = &selector
+		b.selector = labels.Everything()
 	}
 
 	// visit items specified by paths
@@ -653,7 +607,7 @@ func (b *Builder) visitBySelector() *Result {
 		if mapping.Scope.Name() != meta.RESTScopeNameNamespace {
 			selectorNamespace = ""
 		}
-		visitors = append(visitors, NewSelector(client, mapping, selectorNamespace, *b.selector, b.export, b.includeUninitialized))
+		visitors = append(visitors, NewSelector(client, mapping, selectorNamespace, b.selector, b.export))
 	}
 	if b.continueOnError {
 		result.visitor = EagerVisitorList(visitors)
@@ -829,11 +783,7 @@ func (b *Builder) visitByPaths() *Result {
 		visitors = NewDecoratedVisitor(visitors, RetrieveLatest)
 	}
 	if b.selector != nil {
-		selector, err := labels.Parse(*b.selector)
-		if err != nil {
-			return result.withError(fmt.Errorf("the provided selector %q is not valid: %v", b.selector, err))
-		}
-		visitors = NewFilteredVisitor(visitors, FilterBySelector(selector))
+		visitors = NewFilteredVisitor(visitors, FilterBySelector(b.selector))
 	}
 	result.visitor = visitors
 	result.sources = b.paths
@@ -926,5 +876,5 @@ func MultipleTypesRequested(args []string) bool {
 		}
 		rKinds.Insert(rTuple.Resource)
 	}
-	return rKinds.Len() > 1
+	return (rKinds.Len() > 1)
 }

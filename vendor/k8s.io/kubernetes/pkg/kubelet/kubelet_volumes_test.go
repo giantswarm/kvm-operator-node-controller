@@ -21,11 +21,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	core "k8s.io/client-go/testing"
+	"k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/volume"
 	volumetest "k8s.io/kubernetes/pkg/volume/testing"
 	"k8s.io/kubernetes/pkg/volume/util/volumehelper"
@@ -36,7 +36,7 @@ func TestListVolumesForPod(t *testing.T) {
 	defer testKubelet.Cleanup()
 	kubelet := testKubelet.kubelet
 
-	pod := podWithUIDNameNsSpec("12345678", "foo", "test", v1.PodSpec{
+	pod := podWithUidNameNsSpec("12345678", "foo", "test", v1.PodSpec{
 		Volumes: []v1.Volume{
 			{
 				Name: "vol1",
@@ -58,7 +58,9 @@ func TestListVolumesForPod(t *testing.T) {
 	})
 
 	stopCh := runVolumeManager(kubelet)
-	defer close(stopCh)
+	defer func() {
+		close(stopCh)
+	}()
 
 	kubelet.podManager.SetPods([]*v1.Pod{pod})
 	err := kubelet.volumeManager.WaitForAttachAndMount(pod)
@@ -140,7 +142,9 @@ func TestPodVolumesExist(t *testing.T) {
 	}
 
 	stopCh := runVolumeManager(kubelet)
-	defer close(stopCh)
+	defer func() {
+		close(stopCh)
+	}()
 
 	kubelet.podManager.SetPods(pods)
 	for _, pod := range pods {
@@ -159,7 +163,7 @@ func TestVolumeAttachAndMountControllerDisabled(t *testing.T) {
 	defer testKubelet.Cleanup()
 	kubelet := testKubelet.kubelet
 
-	pod := podWithUIDNameNsSpec("12345678", "foo", "test", v1.PodSpec{
+	pod := podWithUidNameNsSpec("12345678", "foo", "test", v1.PodSpec{
 		Volumes: []v1.Volume{
 			{
 				Name: "vol1",
@@ -173,7 +177,9 @@ func TestVolumeAttachAndMountControllerDisabled(t *testing.T) {
 	})
 
 	stopCh := runVolumeManager(kubelet)
-	defer close(stopCh)
+	defer func() {
+		close(stopCh)
+	}()
 
 	kubelet.podManager.SetPods([]*v1.Pod{pod})
 	err := kubelet.volumeManager.WaitForAttachAndMount(pod)
@@ -203,7 +209,7 @@ func TestVolumeUnmountAndDetachControllerDisabled(t *testing.T) {
 	defer testKubelet.Cleanup()
 	kubelet := testKubelet.kubelet
 
-	pod := podWithUIDNameNsSpec("12345678", "foo", "test", v1.PodSpec{
+	pod := podWithUidNameNsSpec("12345678", "foo", "test", v1.PodSpec{
 		Volumes: []v1.Volume{
 			{
 				Name: "vol1",
@@ -217,7 +223,9 @@ func TestVolumeUnmountAndDetachControllerDisabled(t *testing.T) {
 	})
 
 	stopCh := runVolumeManager(kubelet)
-	defer close(stopCh)
+	defer func() {
+		close(stopCh)
+	}()
 
 	// Add pod
 	kubelet.podManager.SetPods([]*v1.Pod{pod})
@@ -290,7 +298,7 @@ func TestVolumeAttachAndMountControllerEnabled(t *testing.T) {
 		return true, nil, fmt.Errorf("no reaction implemented for %s", action)
 	})
 
-	pod := podWithUIDNameNsSpec("12345678", "foo", "test", v1.PodSpec{
+	pod := podWithUidNameNsSpec("12345678", "foo", "test", v1.PodSpec{
 		Volumes: []v1.Volume{
 			{
 				Name: "vol1",
@@ -304,7 +312,9 @@ func TestVolumeAttachAndMountControllerEnabled(t *testing.T) {
 	})
 
 	stopCh := runVolumeManager(kubelet)
-	defer close(stopCh)
+	defer func() {
+		close(stopCh)
+	}()
 
 	kubelet.podManager.SetPods([]*v1.Pod{pod})
 
@@ -357,7 +367,7 @@ func TestVolumeUnmountAndDetachControllerEnabled(t *testing.T) {
 		return true, nil, fmt.Errorf("no reaction implemented for %s", action)
 	})
 
-	pod := podWithUIDNameNsSpec("12345678", "foo", "test", v1.PodSpec{
+	pod := podWithUidNameNsSpec("12345678", "foo", "test", v1.PodSpec{
 		Volumes: []v1.Volume{
 			{
 				Name: "vol1",
@@ -371,7 +381,9 @@ func TestVolumeUnmountAndDetachControllerEnabled(t *testing.T) {
 	})
 
 	stopCh := runVolumeManager(kubelet)
-	defer close(stopCh)
+	defer func() {
+		close(stopCh)
+	}()
 
 	// Add pod
 	kubelet.podManager.SetPods([]*v1.Pod{pod})

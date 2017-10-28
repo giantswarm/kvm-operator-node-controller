@@ -1,9 +1,6 @@
-# gazelle:exclude _artifacts
-# gazelle:exclude _gopath
-# gazelle:exclude _output
-# gazelle:exclude _tmp
-
 package(default_visibility = ["//visibility:public"])
+
+licenses(["notice"])
 
 load("@io_bazel_rules_go//go:def.bzl", "go_prefix")
 load("@io_kubernetes_build//defs:build.bzl", "gcs_upload")
@@ -29,7 +26,6 @@ gcs_upload(
         "//build/release-tars:release-tars-and-hashes",
         "//cluster/gce:gcs-release-artifacts-and-hashes",
     ],
-    tags = ["manual"],
     upload_paths = {
         "//:_binary-artifacts-and-hashes": "bin/linux/amd64",
         "//build/release-tars:release-tars-and-hashes": "",
@@ -67,7 +63,6 @@ filegroup(
         "//hack:all-srcs",
         "//pkg:all-srcs",
         "//plugin:all-srcs",
-        "//staging:all-srcs",
         "//test:all-srcs",
         "//third_party:all-srcs",
         "//vendor:all-srcs",

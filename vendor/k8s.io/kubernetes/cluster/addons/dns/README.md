@@ -23,10 +23,11 @@ will be clobbered, in addition the replicas count for kube-dns Deployment will
 be reset to 1. See [Cluster add-ons README](../README.md) and
 [#36411](https://github.com/kubernetes/kubernetes/issues/36411) for reference.
 
-## kube-dns addon templates
+## kube-dns Deployment and Service templates
 
 This directory contains the base UNDERSCORE templates that can be used to
-generate the kube-dns.yaml.in needed in Salt format.
+generate the kubedns-controller.yaml.in and kubedns.controller.yaml.in needed in
+Salt format.
 
 Due to a varied preference in templating language choices, the transform
 Makefile in this directory should be enhanced to generate all required formats
@@ -37,7 +38,7 @@ that supply values for your new parameter.  Here is one way you might find those
 scripts:
 
 ```
-cd kubernetes && git grep 'kube-dns.yaml'
+cd kubernetes && git grep 'kubedns-controller.yaml'
 ```
 
 ### Base Template files
@@ -46,19 +47,22 @@ These are the authoritative base templates.
 Run 'make' to generate the Salt and Sed yaml templates from these.
 
 ```
-kube-dns.yaml.base
+kubedns-controller.yaml.base
+kubedns-svc.yaml.base
 ```
 
 ### Generated Salt files
 
 ```
-kube-dns.yaml.in
+kubedns-controller.yaml.in
+kubedns-svc.yaml.in
 ```
 
 ### Generated Sed files
 
 ```
-kube-dns.yaml.sed
+kubedns-controller.yaml.sed
+kubedns-svc.yaml.sed
 ```
 
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/cluster/addons/dns/README.md?pixel)]()

@@ -37,7 +37,7 @@ import (
 	"google.golang.org/cloud"
 	"google.golang.org/cloud/storage"
 
-	"github.com/sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 
 	ctx "github.com/docker/distribution/context"
 	storagedriver "github.com/docker/distribution/registry/storage/driver"
@@ -321,8 +321,12 @@ type writer struct {
 
 // Cancel removes any written content from this FileWriter.
 func (w *writer) Cancel() error {
+	err := w.checkClosed()
+	if err != nil {
+		return err
+	}
 	w.closed = true
-	err := storageDeleteObject(cloud.NewContext(dummyProjectID, w.client), w.bucket, w.name)
+	err = storageDeleteObject(cloud.NewContext(dummyProjectID, w.client), w.bucket, w.name)
 	if err != nil {
 		if status, ok := err.(*googleapi.Error); ok {
 			if status.Code == http.StatusNotFound {

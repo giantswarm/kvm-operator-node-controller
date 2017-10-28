@@ -53,12 +53,7 @@ readonly KUBE_NODE_TARGETS=($(kube::golang::node_targets))
 readonly KUBE_NODE_BINARIES=("${KUBE_NODE_TARGETS[@]##*/}")
 readonly KUBE_NODE_BINARIES_WIN=("${KUBE_NODE_BINARIES[@]/%/.exe}")
 
-if [[ -n "${KUBE_BUILD_PLATFORMS:-}" ]]; then
-  readonly KUBE_SERVER_PLATFORMS=(${KUBE_BUILD_PLATFORMS})
-  readonly KUBE_NODE_PLATFORMS=(${KUBE_BUILD_PLATFORMS})
-  readonly KUBE_TEST_PLATFORMS=(${KUBE_BUILD_PLATFORMS})
-  readonly KUBE_CLIENT_PLATFORMS=(${KUBE_BUILD_PLATFORMS})
-elif [[ "${KUBE_FASTBUILD:-}" == "true" ]]; then
+if [[ "${KUBE_FASTBUILD:-}" == "true" ]]; then
   readonly KUBE_SERVER_PLATFORMS=(linux/amd64)
   readonly KUBE_NODE_PLATFORMS=(linux/amd64)
   if [[ "${KUBE_BUILDER_OS:-}" == "darwin"* ]]; then
@@ -112,10 +107,6 @@ else
   # Which platforms we should compile test targets for. Not all client platforms need these tests
   readonly KUBE_TEST_PLATFORMS=(
     linux/amd64
-    linux/arm
-    linux/arm64
-    linux/s390x
-    linux/ppc64le
     darwin/amd64
     windows/amd64
   )
@@ -138,6 +129,7 @@ kube::golang::test_targets() {
     cmd/genkubedocs
     cmd/genman
     cmd/genyaml
+    cmd/mungedocs
     cmd/genswaggertypedocs
     cmd/linkcheck
     federation/cmd/genfeddocs
@@ -249,7 +241,21 @@ kube::golang::host_platform() {
   echo "$(go env GOHOSTOS)/$(go env GOHOSTARCH)"
 }
 
-# Takes the platform name ($1) and sets the appropriate golang env variables
+kube::golang::current_platform() {
+  local os="${GOOS-}"
+  if [[ -z $os ]]; then
+    os=$(go env GOHOSTOS)
+  fi
+
+  local arch="${GOARCH-}"
+  if [[ -z $arch ]]; then
+    arch=$(go env GOHOSTARCH)
+  fi
+
+  echo "$os/$arch"
+}
+
+# Takes the the platform name ($1) and sets the appropriate golang env variables
 # for that platform.
 kube::golang::set_platform_envs() {
   [[ -n ${1-} ]] || {
@@ -323,13 +329,11 @@ EOF
 
   local go_version
   go_version=($(go version))
-  local minimum_go_version
-  minimum_go_version=go1.8.3
-  if [[ "${go_version[2]}" < "${minimum_go_version}" && "${go_version[2]}" != "devel" ]]; then
+  if [[ "${go_version[2]}" < "go1.6" && "${go_version[2]}" != "devel" ]]; then
     kube::log::usage_from_stdin <<EOF
 Detected go version: ${go_version[*]}.
-Kubernetes requires ${minimum_go_version} or greater.
-Please install ${minimum_go_version} or later.
+Kubernetes requires go version 1.6 or greater.
+Please install Go version 1.6 or later.
 EOF
     return 2
   fi
@@ -352,15 +356,12 @@ kube::golang::setup_env() {
 
   kube::golang::create_gopath_tree
 
-  export GOPATH="${KUBE_GOPATH}"
+  export GOPATH=${KUBE_GOPATH}
 
   # Append KUBE_EXTRA_GOPATH to the GOPATH if it is defined.
   if [[ -n ${KUBE_EXTRA_GOPATH:-} ]]; then
     GOPATH="${GOPATH}:${KUBE_EXTRA_GOPATH}"
   fi
-
-  # Make sure our own Go binaries are in PATH.
-  export PATH="${KUBE_GOPATH}/bin:${PATH}"
 
   # Change directories so that we are within the GOPATH.  Some tools get really
   # upset if this is not true.  We use a whole fake GOPATH here to collect the
@@ -376,7 +377,7 @@ kube::golang::setup_env() {
   # Unset GOBIN in case it already exists in the current session.
   unset GOBIN
 
-  # This seems to matter to some tools (godep, ginkgo...)
+  # This seems to matter to some tools (godep, ugorji, ginkgo...)
   export GO15VENDOREXPERIMENT=1
 }
 
@@ -623,9 +624,9 @@ kube::golang::build_binaries() {
 
     # Use eval to preserve embedded quoted strings.
     local goflags goldflags gogcflags
-    eval "goflags=(${GOFLAGS:-})"
-    goldflags="${GOLDFLAGS:-} $(kube::version::ldflags)"
-    gogcflags="${GOGCFLAGS:-}"
+    eval "goflags=(${KUBE_GOFLAGS:-})"
+    goldflags="${KUBE_GOLDFLAGS:-} $(kube::version::ldflags)"
+    gogcflags="${KUBE_GOGCFLAGS:-}"
 
     local use_go_build
     local -a targets=()

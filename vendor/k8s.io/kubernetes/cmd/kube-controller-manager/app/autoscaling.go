@@ -24,7 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/kubernetes/pkg/controller/podautoscaler"
 	"k8s.io/kubernetes/pkg/controller/podautoscaler/metrics"
-	resourceclient "k8s.io/metrics/pkg/client/clientset_generated/clientset/typed/metrics/v1beta1"
+	resourceclient "k8s.io/metrics/pkg/client/clientset_generated/clientset/typed/metrics/v1alpha1"
 	"k8s.io/metrics/pkg/client/custom_metrics"
 )
 
@@ -64,11 +64,7 @@ func startHPAControllerWithLegacyClient(ctx ControllerContext) (bool, error) {
 
 func startHPAControllerWithMetricsClient(ctx ControllerContext, metricsClient metrics.MetricsClient) (bool, error) {
 	hpaClient := ctx.ClientBuilder.ClientOrDie("horizontal-pod-autoscaler")
-	replicaCalc := podautoscaler.NewReplicaCalculator(
-		metricsClient,
-		hpaClient.Core(),
-		ctx.Options.HorizontalPodAutoscalerTolerance,
-	)
+	replicaCalc := podautoscaler.NewReplicaCalculator(metricsClient, hpaClient.Core())
 	go podautoscaler.NewHorizontalController(
 		ctx.ClientBuilder.ClientGoClientOrDie("horizontal-pod-autoscaler").Core(),
 		hpaClient.Extensions(),

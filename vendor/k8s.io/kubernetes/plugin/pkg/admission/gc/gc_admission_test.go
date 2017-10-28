@@ -24,7 +24,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/admission"
-	"k8s.io/apiserver/pkg/admission/initializer"
 	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/kubernetes/pkg/api"
@@ -40,17 +39,11 @@ func (fakeAuthorizer) Authorize(a authorizer.Attributes) (bool, string, error) {
 		if a.GetVerb() == "delete" {
 			return false, "", nil
 		}
-		if a.GetVerb() == "update" && a.GetSubresource() == "finalizers" {
-			return false, "", nil
-		}
 		return true, "", nil
 	}
 
 	if username == "non-pod-deleter" {
 		if a.GetVerb() == "delete" && a.GetResource() == "pods" {
-			return false, "", nil
-		}
-		if a.GetVerb() == "update" && a.GetResource() == "pods" && a.GetSubresource() == "finalizers" {
 			return false, "", nil
 		}
 		return true, "", nil
@@ -60,9 +53,6 @@ func (fakeAuthorizer) Authorize(a authorizer.Attributes) (bool, string, error) {
 		if a.GetVerb() == "delete" && a.GetResource() == "replicationcontrollers" {
 			return false, "", nil
 		}
-		if a.GetVerb() == "update" && a.GetResource() == "replicationcontrollers" && a.GetSubresource() == "finalizers" {
-			return false, "", nil
-		}
 		return true, "", nil
 	}
 
@@ -70,7 +60,7 @@ func (fakeAuthorizer) Authorize(a authorizer.Attributes) (bool, string, error) {
 }
 
 // newGCPermissionsEnforcement returns the admission controller configured for testing.
-func newGCPermissionsEnforcement() (*gcPermissionsEnforcement, error) {
+func newGCPermissionsEnforcement() *gcPermissionsEnforcement {
 	// the pods/status endpoint is ignored by this plugin since old kubelets
 	// corrupt them.  the pod status strategy ensures status updates cannot mutate
 	// ownerRef.
@@ -84,18 +74,9 @@ func newGCPermissionsEnforcement() (*gcPermissionsEnforcement, error) {
 		Handler:   admission.NewHandler(admission.Create, admission.Update),
 		whiteList: whiteList,
 	}
-
-	genericPluginInitializer, err := initializer.New(nil, nil, fakeAuthorizer{}, nil, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	pluginInitializer := kubeadmission.NewPluginInitializer(nil, nil, nil, api.Registry.RESTMapper(), nil)
-	initializersChain := admission.PluginInitializers{}
-	initializersChain = append(initializersChain, genericPluginInitializer)
-	initializersChain = append(initializersChain, pluginInitializer)
-
-	initializersChain.Initialize(gcAdmit)
-	return gcAdmit, nil
+	pluginInitializer := kubeadmission.NewPluginInitializer(nil, nil, nil, fakeAuthorizer{}, nil, api.Registry.RESTMapper(), nil)
+	pluginInitializer.Initialize(gcAdmit)
+	return gcAdmit
 }
 
 func TestGCAdmission(t *testing.T) {
@@ -255,10 +236,7 @@ func TestGCAdmission(t *testing.T) {
 			checkError: expectNoError,
 		},
 	}
-	gcAdmit, err := newGCPermissionsEnforcement()
-	if err != nil {
-		t.Error(err)
-	}
+	gcAdmit := newGCPermissionsEnforcement()
 
 	for _, tc := range tests {
 		operation := admission.Create
@@ -348,10 +326,7 @@ func TestBlockOwnerDeletionAdmission(t *testing.T) {
 		return err == nil
 	}
 	expectCantSetBlockOwnerDeletionError := func(err error) bool {
-		if err == nil {
-			return false
-		}
-		return strings.Contains(err.Error(), "cannot set blockOwnerDeletion if an ownerReference refers to a resource you can't set finalizers on")
+		return strings.Contains(err.Error(), "cannot set blockOwnerDeletion if an ownerReference refers to a resource you can't delete")
 	}
 	tests := []struct {
 		name        string
@@ -503,10 +478,7 @@ func TestBlockOwnerDeletionAdmission(t *testing.T) {
 			checkError: expectNoError,
 		},
 	}
-	gcAdmit, err := newGCPermissionsEnforcement()
-	if err != nil {
-		t.Error(err)
-	}
+	gcAdmit := newGCPermissionsEnforcement()
 
 	for _, tc := range tests {
 		operation := admission.Create

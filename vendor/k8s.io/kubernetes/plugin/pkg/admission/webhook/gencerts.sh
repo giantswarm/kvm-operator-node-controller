@@ -35,7 +35,6 @@ extendedKeyUsage = clientAuth, serverAuth
 subjectAltName = @alt_names
 [alt_names]
 IP.1 = 127.0.0.1
-DNS.1 = webhook-test.default.svc
 EOF
 
 cat > client.conf << EOF
@@ -50,7 +49,6 @@ extendedKeyUsage = clientAuth, serverAuth
 subjectAltName = @alt_names
 [alt_names]
 IP.1 = 127.0.0.1
-DNS.1 = webhook-test.default.svc
 EOF
 
 # Create a certificate authority
@@ -63,7 +61,7 @@ openssl req -x509 -new -nodes -key badCAKey.pem -days 100000 -out badCACert.pem 
 
 # Create a server certiticate
 openssl genrsa -out serverKey.pem 2048
-openssl req -new -key serverKey.pem -out server.csr -subj "/CN=webhook-test.default.svc" -config server.conf
+openssl req -new -key serverKey.pem -out server.csr -subj "/CN=${CN_BASE}_server" -config server.conf
 openssl x509 -req -in server.csr -CA caCert.pem -CAkey caKey.pem -CAcreateserial -out serverCert.pem -days 100000 -extensions v3_req -extfile server.conf
 
 # Create a client certiticate

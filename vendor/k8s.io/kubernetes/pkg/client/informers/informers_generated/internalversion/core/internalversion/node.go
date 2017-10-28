@@ -41,11 +41,8 @@ type nodeInformer struct {
 	factory internalinterfaces.SharedInformerFactory
 }
 
-// NewNodeInformer constructs a new informer for Node type.
-// Always prefer using an informer factory to get a shared informer instead of getting an independent
-// one. This reduces memory footprint and number of connections to the server.
-func NewNodeInformer(client internalclientset.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return cache.NewSharedIndexInformer(
+func newNodeInformer(client internalclientset.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	sharedIndexInformer := cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
 				return client.Core().Nodes().List(options)
@@ -56,16 +53,14 @@ func NewNodeInformer(client internalclientset.Interface, resyncPeriod time.Durat
 		},
 		&api.Node{},
 		resyncPeriod,
-		indexers,
+		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
 	)
-}
 
-func defaultNodeInformer(client internalclientset.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewNodeInformer(client, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	return sharedIndexInformer
 }
 
 func (f *nodeInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&api.Node{}, defaultNodeInformer)
+	return f.factory.InformerFor(&api.Node{}, newNodeInformer)
 }
 
 func (f *nodeInformer) Lister() internalversion.NodeLister {

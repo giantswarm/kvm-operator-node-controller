@@ -19,7 +19,7 @@ package apparmor
 import (
 	"strings"
 
-	"k8s.io/api/core/v1"
+	"k8s.io/kubernetes/pkg/api/v1"
 )
 
 // TODO: Move these values into the API package.
@@ -35,16 +35,13 @@ const (
 	ProfileRuntimeDefault = "runtime/default"
 	// The prefix for specifying profiles loaded on the node.
 	ProfileNamePrefix = "localhost/"
-
-	// Unconfined profile
-	ProfileNameUnconfined = "unconfined"
 )
 
 // Checks whether app armor is required for pod to be run.
 func isRequired(pod *v1.Pod) bool {
-	for key, value := range pod.Annotations {
+	for key := range pod.Annotations {
 		if strings.HasPrefix(key, ContainerAnnotationKeyPrefix) {
-			return value != ProfileNameUnconfined
+			return true
 		}
 	}
 	return false

@@ -19,8 +19,7 @@ package utils
 import (
 	"fmt"
 
-	"k8s.io/api/core/v1"
-	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
+	"k8s.io/kubernetes/pkg/api/v1"
 )
 
 type ContainerFailures struct {
@@ -37,7 +36,7 @@ func PodRunningReady(p *v1.Pod) (bool, error) {
 			p.ObjectMeta.Name, p.Spec.NodeName, v1.PodRunning, p.Status.Phase)
 	}
 	// Check the ready condition is true.
-	if !podutil.IsPodReady(p) {
+	if !PodReady(p) {
 		return false, fmt.Errorf("pod '%s' on '%s' didn't have condition {%v %v}; conditions: %v",
 			p.ObjectMeta.Name, p.Spec.NodeName, v1.PodReady, v1.ConditionTrue, p.Status.Conditions)
 	}
@@ -63,20 +62,21 @@ func FailedContainers(pod *v1.Pod) map[string]ContainerFailures {
 	statuses := pod.Status.ContainerStatuses
 	if len(statuses) == 0 {
 		return nil
-	}
-	for _, status := range statuses {
-		if status.State.Terminated != nil {
-			states[status.ContainerID] = ContainerFailures{status: status.State.Terminated}
-		} else if status.LastTerminationState.Terminated != nil {
-			states[status.ContainerID] = ContainerFailures{status: status.LastTerminationState.Terminated}
-		}
-		if status.RestartCount > 0 {
-			var ok bool
-			if state, ok = states[status.ContainerID]; !ok {
-				state = ContainerFailures{}
+	} else {
+		for _, status := range statuses {
+			if status.State.Terminated != nil {
+				states[status.ContainerID] = ContainerFailures{status: status.State.Terminated}
+			} else if status.LastTerminationState.Terminated != nil {
+				states[status.ContainerID] = ContainerFailures{status: status.LastTerminationState.Terminated}
 			}
-			state.Restarts = int(status.RestartCount)
-			states[status.ContainerID] = state
+			if status.RestartCount > 0 {
+				var ok bool
+				if state, ok = states[status.ContainerID]; !ok {
+					state = ContainerFailures{}
+				}
+				state.Restarts = int(status.RestartCount)
+				states[status.ContainerID] = state
+			}
 		}
 	}
 
@@ -103,9 +103,20 @@ func TerminatedContainers(pod *v1.Pod) map[string]string {
 // PodNotReady checks whether pod p's has a ready condition of status false.
 func PodNotReady(p *v1.Pod) (bool, error) {
 	// Check the ready condition is false.
-	if podutil.IsPodReady(p) {
+	if PodReady(p) {
 		return false, fmt.Errorf("pod '%s' on '%s' didn't have condition {%v %v}; conditions: %v",
 			p.ObjectMeta.Name, p.Spec.NodeName, v1.PodReady, v1.ConditionFalse, p.Status.Conditions)
 	}
 	return true, nil
+}
+
+// podReady returns whether pod has a condition of Ready with a status of true.
+// TODO: should be replaced with podutil.IsPodReady
+func PodReady(pod *v1.Pod) bool {
+	for _, cond := range pod.Status.Conditions {
+		if cond.Type == v1.PodReady && cond.Status == v1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }

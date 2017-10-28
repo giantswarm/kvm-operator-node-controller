@@ -19,7 +19,6 @@ package options
 
 import (
 	"net"
-	"strings"
 	"time"
 
 	utilnet "k8s.io/apimachinery/pkg/util/net"
@@ -30,13 +29,15 @@ import (
 	kubeoptions "k8s.io/kubernetes/pkg/kubeapiserver/options"
 	kubeletclient "k8s.io/kubernetes/pkg/kubelet/client"
 	"k8s.io/kubernetes/pkg/master/ports"
-	"k8s.io/kubernetes/pkg/master/reconcilers"
 
 	// add the kubernetes feature gates
 	_ "k8s.io/kubernetes/pkg/features"
 
 	"github.com/spf13/pflag"
 )
+
+// DefaultServiceNodePortRange is the default port range for NodePort services.
+var DefaultServiceNodePortRange = utilnet.PortRange{Base: 30000, Size: 2768}
 
 // ServerRunOptions runs a kubernetes api server.
 type ServerRunOptions struct {
@@ -58,6 +59,7 @@ type ServerRunOptions struct {
 	EventTTL                  time.Duration
 	KubeletConfig             kubeletclient.KubeletClientConfig
 	KubernetesServiceNodePort int
+	MasterCount               int
 	MaxConnectionBytesPerSec  int64
 	ServiceClusterIPRange     net.IPNet // TODO: make this a list
 	ServiceNodePortRange      utilnet.PortRange
@@ -68,16 +70,13 @@ type ServerRunOptions struct {
 	ProxyClientKeyFile  string
 
 	EnableAggregatorRouting bool
-
-	MasterCount            int
-	EndpointReconcilerType string
 }
 
 // NewServerRunOptions creates a new ServerRunOptions object with default parameters
 func NewServerRunOptions() *ServerRunOptions {
 	s := ServerRunOptions{
 		GenericServerRunOptions: genericoptions.NewServerRunOptions(),
-		Etcd:                 genericoptions.NewEtcdOptions(storagebackend.NewDefaultConfig(kubeoptions.DefaultEtcdPathPrefix, nil)),
+		Etcd:                 genericoptions.NewEtcdOptions(storagebackend.NewDefaultConfig(kubeoptions.DefaultEtcdPathPrefix, api.Scheme, nil)),
 		SecureServing:        kubeoptions.NewSecureServingOptions(),
 		InsecureServing:      kubeoptions.NewInsecureServingOptions(),
 		Audit:                genericoptions.NewAuditOptions(),
@@ -89,10 +88,9 @@ func NewServerRunOptions() *ServerRunOptions {
 		StorageSerialization: kubeoptions.NewStorageSerializationOptions(),
 		APIEnablement:        kubeoptions.NewAPIEnablementOptions(),
 
-		EnableLogsHandler:      true,
-		EventTTL:               1 * time.Hour,
-		MasterCount:            1,
-		EndpointReconcilerType: string(reconcilers.MasterCountReconcilerType),
+		EnableLogsHandler: true,
+		EventTTL:          1 * time.Hour,
+		MasterCount:       1,
 		KubeletConfig: kubeletclient.KubeletClientConfig{
 			Port:         ports.KubeletPort,
 			ReadOnlyPort: ports.KubeletReadOnlyPort,
@@ -111,13 +109,10 @@ func NewServerRunOptions() *ServerRunOptions {
 			EnableHttps: true,
 			HTTPTimeout: time.Duration(5) * time.Second,
 		},
-		ServiceNodePortRange: kubeoptions.DefaultServiceNodePortRange,
+		ServiceNodePortRange: DefaultServiceNodePortRange,
 	}
 	// Overwrite the default for storage data format.
 	s.Etcd.DefaultStorageMediaType = "application/vnd.kubernetes.protobuf"
-
-	// register all admission plugins
-	RegisterAllAdmissionPlugins(s.Admission.Plugins)
 	// Set the default for admission plugins names
 	s.Admission.PluginNames = []string{"AlwaysAdmit"}
 	return &s
@@ -148,7 +143,7 @@ func (s *ServerRunOptions) AddFlags(fs *pflag.FlagSet) {
 		"Amount of time to retain events.")
 
 	fs.BoolVar(&s.AllowPrivileged, "allow-privileged", s.AllowPrivileged,
-		"If true, allow privileged containers. [default=false]")
+		"If true, allow privileged containers.")
 
 	fs.BoolVar(&s.EnableLogsHandler, "enable-logs-handler", s.EnableLogsHandler,
 		"If true, install a /logs handler for the apiserver logs.")
@@ -165,9 +160,6 @@ func (s *ServerRunOptions) AddFlags(fs *pflag.FlagSet) {
 
 	fs.IntVar(&s.MasterCount, "apiserver-count", s.MasterCount,
 		"The number of apiservers running in the cluster, must be a positive number.")
-
-	fs.StringVar(&s.EndpointReconcilerType, "alpha-endpoint-reconciler-type", string(s.EndpointReconcilerType),
-		"Use an endpoint reconciler ("+strings.Join(reconcilers.AllTypes.Names(), ", ")+")")
 
 	// See #14282 for details on how to test/try this option out.
 	// TODO: remove this comment once this option is tested in CI.

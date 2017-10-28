@@ -1,5 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["notice"])
+
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_binary",
@@ -8,8 +10,8 @@ load(
 
 go_binary(
     name = "resource-consumer",
-    importpath = "k8s.io/kubernetes/test/images/resource-consumer",
     library = ":go_default_library",
+    tags = ["automanaged"],
 )
 
 go_library(
@@ -19,7 +21,7 @@ go_library(
         "resource_consumer_handler.go",
         "utils.go",
     ],
-    importpath = "k8s.io/kubernetes/test/images/resource-consumer",
+    tags = ["automanaged"],
     deps = ["//test/images/resource-consumer/common:go_default_library"],
 )
 

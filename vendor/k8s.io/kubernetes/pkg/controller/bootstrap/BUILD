@@ -1,5 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["notice"])
+
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
@@ -15,18 +17,18 @@ go_test(
         "tokencleaner_test.go",
         "util_test.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/controller/bootstrap",
     library = ":go_default_library",
+    tags = ["automanaged"],
     deps = [
         "//pkg/api:go_default_library",
         "//pkg/api/helper:go_default_library",
         "//pkg/bootstrap/api:go_default_library",
         "//vendor/github.com/davecgh/go-spew/spew:go_default_library",
         "//vendor/github.com/stretchr/testify/assert:go_default_library",
-        "//vendor/k8s.io/api/core/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
         "//vendor/k8s.io/client-go/kubernetes/fake:go_default_library",
+        "//vendor/k8s.io/client-go/pkg/api/v1:go_default_library",
         "//vendor/k8s.io/client-go/testing:go_default_library",
     ],
 )
@@ -40,14 +42,13 @@ go_library(
         "tokencleaner.go",
         "util.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/controller/bootstrap",
+    tags = ["automanaged"],
     deps = [
         "//pkg/api:go_default_library",
         "//pkg/bootstrap/api:go_default_library",
         "//pkg/util/metrics:go_default_library",
         "//vendor/github.com/golang/glog:go_default_library",
         "//vendor/github.com/square/go-jose:go_default_library",
-        "//vendor/k8s.io/api/core/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/fields:go_default_library",
@@ -56,6 +57,8 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/util/wait:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/watch:go_default_library",
         "//vendor/k8s.io/client-go/kubernetes:go_default_library",
+        "//vendor/k8s.io/client-go/kubernetes/scheme:go_default_library",
+        "//vendor/k8s.io/client-go/pkg/api/v1:go_default_library",
         "//vendor/k8s.io/client-go/tools/cache:go_default_library",
         "//vendor/k8s.io/client-go/util/workqueue:go_default_library",
     ],

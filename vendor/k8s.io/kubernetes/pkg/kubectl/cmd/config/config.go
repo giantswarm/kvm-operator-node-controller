@@ -17,7 +17,6 @@ limitations under the License.
 package config
 
 import (
-	"fmt"
 	"io"
 	"path"
 	"strconv"
@@ -27,7 +26,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/kubectl/util/i18n"
+	"k8s.io/kubernetes/pkg/util/i18n"
 )
 
 // NewCmdConfig creates a command object for the "config" action, and adds all child commands to it.
@@ -81,10 +80,4 @@ func toBool(propertyValue string) (bool, error) {
 	}
 
 	return boolValue, nil
-}
-
-func helpErrorf(cmd *cobra.Command, format string, args ...interface{}) error {
-	cmd.Help()
-	msg := fmt.Sprintf(format, args...)
-	return fmt.Errorf("%s\n", msg)
 }
