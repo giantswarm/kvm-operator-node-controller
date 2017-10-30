@@ -1,5 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["notice"])
+
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
@@ -15,7 +17,7 @@ go_library(
         "poddisruptionbudget.go",
         "policy_client.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/policy/internalversion",
+    tags = ["automanaged"],
     deps = [
         "//pkg/apis/policy:go_default_library",
         "//pkg/client/clientset_generated/internalclientset/scheme:go_default_library",

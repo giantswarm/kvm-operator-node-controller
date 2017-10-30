@@ -41,31 +41,26 @@ type controllerRevisionInformer struct {
 	factory internalinterfaces.SharedInformerFactory
 }
 
-// NewControllerRevisionInformer constructs a new informer for ControllerRevision type.
-// Always prefer using an informer factory to get a shared informer instead of getting an independent
-// one. This reduces memory footprint and number of connections to the server.
-func NewControllerRevisionInformer(client internalclientset.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return cache.NewSharedIndexInformer(
+func newControllerRevisionInformer(client internalclientset.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	sharedIndexInformer := cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
-				return client.Apps().ControllerRevisions(namespace).List(options)
+				return client.Apps().ControllerRevisions(v1.NamespaceAll).List(options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
-				return client.Apps().ControllerRevisions(namespace).Watch(options)
+				return client.Apps().ControllerRevisions(v1.NamespaceAll).Watch(options)
 			},
 		},
 		&apps.ControllerRevision{},
 		resyncPeriod,
-		indexers,
+		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
 	)
-}
 
-func defaultControllerRevisionInformer(client internalclientset.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewControllerRevisionInformer(client, v1.NamespaceAll, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	return sharedIndexInformer
 }
 
 func (f *controllerRevisionInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apps.ControllerRevision{}, defaultControllerRevisionInformer)
+	return f.factory.InformerFor(&apps.ControllerRevision{}, newControllerRevisionInformer)
 }
 
 func (f *controllerRevisionInformer) Lister() internalversion.ControllerRevisionLister {

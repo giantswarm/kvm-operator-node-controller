@@ -20,8 +20,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/registry/generic"
 	genericregistry "k8s.io/apiserver/pkg/registry/generic/registry"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/admissionregistration"
 	"k8s.io/kubernetes/pkg/registry/admissionregistration/initializerconfiguration"
+	"k8s.io/kubernetes/pkg/registry/cachesize"
 )
 
 // rest implements a RESTStorage for pod disruption budgets against etcd
@@ -32,18 +34,21 @@ type REST struct {
 // NewREST returns a RESTStorage object that will work against pod disruption budgets.
 func NewREST(optsGetter generic.RESTOptionsGetter) *REST {
 	store := &genericregistry.Store{
+		Copier:      api.Scheme,
 		NewFunc:     func() runtime.Object { return &admissionregistration.InitializerConfiguration{} },
 		NewListFunc: func() runtime.Object { return &admissionregistration.InitializerConfigurationList{} },
 		ObjectNameFunc: func(obj runtime.Object) (string, error) {
 			return obj.(*admissionregistration.InitializerConfiguration).Name, nil
 		},
-		DefaultQualifiedResource: admissionregistration.Resource("initializerconfigurations"),
+		PredicateFunc:     initializerconfiguration.MatchInitializerConfiguration,
+		QualifiedResource: admissionregistration.Resource("initializerconfigurations"),
+		WatchCacheSize:    cachesize.GetWatchCacheSizeByResource("initializerconfigurations"),
 
 		CreateStrategy: initializerconfiguration.Strategy,
 		UpdateStrategy: initializerconfiguration.Strategy,
 		DeleteStrategy: initializerconfiguration.Strategy,
 	}
-	options := &generic.StoreOptions{RESTOptions: optsGetter}
+	options := &generic.StoreOptions{RESTOptions: optsGetter, AttrFunc: initializerconfiguration.GetAttrs}
 	if err := store.CompleteWithOptions(options); err != nil {
 		panic(err) // TODO: Propagate error up
 	}

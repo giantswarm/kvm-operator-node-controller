@@ -4,7 +4,6 @@ metadata:
   name: hollow-node
   labels:
     name: hollow-node
-    {{kubemark_mig_config}}
 spec:
   replicas: {{numreplicas}}
   selector:
@@ -13,7 +12,6 @@ spec:
     metadata:
       labels:
         name: hollow-node
-        {{kubemark_mig_config}}
     spec:
       initContainers:
       - name: init-inotify-limit
@@ -62,7 +60,7 @@ spec:
           mountPath: /var/log
         resources:
           requests:
-            cpu: 40m
+            cpu: 50m
             memory: 100M
         securityContext:
           privileged: true

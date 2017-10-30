@@ -31,4 +31,3 @@ spec:
   - name: varlog
     hostPath:
       path: /var/log/kube-addon-manager.log
-      type: FileOrCreate

@@ -20,20 +20,20 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
-	"sort"
 	"strings"
 	"unicode"
 
-	restful "github.com/emicklei/go-restful"
+	"github.com/emicklei/go-restful"
 	"github.com/go-openapi/spec"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/kube-openapi/pkg/util"
+	"k8s.io/apiserver/pkg/util/trie"
+	"sort"
 )
 
-var verbs = util.NewTrie([]string{"get", "log", "read", "replace", "patch", "delete", "deletecollection", "watch", "connect", "proxy", "list", "create", "patch"})
+var verbs = trie.New([]string{"get", "log", "read", "replace", "patch", "delete", "deletecollection", "watch", "connect", "proxy", "list", "create", "patch"})
 
 const (
 	extensionGVK = "x-kubernetes-group-version-kind"
@@ -135,11 +135,7 @@ func friendlyName(name string) string {
 }
 
 func typeName(t reflect.Type) string {
-	path := t.PkgPath()
-	if strings.Contains(path, "/vendor/") {
-		path = path[strings.Index(path, "/vendor/")+len("/vendor/"):]
-	}
-	return fmt.Sprintf("%s.%s", path, t.Name())
+	return fmt.Sprintf("%s.%s", t.PkgPath(), t.Name())
 }
 
 // NewDefinitionNamer constructs a new DefinitionNamer to be used to customize OpenAPI spec.

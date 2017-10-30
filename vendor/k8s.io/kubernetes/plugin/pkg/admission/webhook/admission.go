@@ -21,15 +21,11 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net"
-	"net/http"
 	"sync"
 	"time"
 
 	"github.com/golang/glog"
 
-	admissionv1alpha1 "k8s.io/api/admission/v1alpha1"
-	"k8s.io/api/admissionregistration/v1alpha1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -38,11 +34,13 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/admission"
-	"k8s.io/apiserver/pkg/admission/configuration"
-	genericadmissioninit "k8s.io/apiserver/pkg/admission/initializer"
-	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/kubernetes/pkg/api"
+	admissionv1alpha1 "k8s.io/kubernetes/pkg/apis/admission/v1alpha1"
+	"k8s.io/kubernetes/pkg/apis/admissionregistration/v1alpha1"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	admissioninit "k8s.io/kubernetes/pkg/kubeapiserver/admission"
+	"k8s.io/kubernetes/pkg/kubeapiserver/admission/configuration"
 
 	// install the clientgo admission API for use with api registry
 	_ "k8s.io/kubernetes/pkg/apis/admission/install"
@@ -93,7 +91,9 @@ func NewGenericAdmissionWebhook() (*GenericAdmissionWebhook, error) {
 			admission.Delete,
 			admission.Update,
 		),
-		serviceResolver: defaultServiceResolver{},
+		negotiatedSerializer: serializer.NegotiatedSerializerWrapper(runtime.SerializerInfo{
+			Serializer: api.Codecs.LegacyCodec(admissionv1alpha1.SchemeGroupVersion),
+		}),
 	}, nil
 }
 
@@ -105,34 +105,16 @@ type GenericAdmissionWebhook struct {
 	negotiatedSerializer runtime.NegotiatedSerializer
 	clientCert           []byte
 	clientKey            []byte
-	proxyTransport       *http.Transport
 }
 
 var (
 	_ = admissioninit.WantsServiceResolver(&GenericAdmissionWebhook{})
-	_ = genericadmissioninit.WantsClientCert(&GenericAdmissionWebhook{})
-	_ = genericadmissioninit.WantsExternalKubeClientSet(&GenericAdmissionWebhook{})
+	_ = admissioninit.WantsClientCert(&GenericAdmissionWebhook{})
+	_ = admissioninit.WantsExternalKubeClientSet(&GenericAdmissionWebhook{})
 )
 
-func (a *GenericAdmissionWebhook) SetProxyTransport(pt *http.Transport) {
-	a.proxyTransport = pt
-}
-
-// SetServiceResolver sets a service resolver for the webhook admission plugin.
-// Passing a nil resolver does not have an effect, instead a default one will be used.
 func (a *GenericAdmissionWebhook) SetServiceResolver(sr admissioninit.ServiceResolver) {
-	if sr != nil {
-		a.serviceResolver = sr
-	}
-}
-
-// SetScheme sets a serializer(NegotiatedSerializer) which is derived from the scheme
-func (a *GenericAdmissionWebhook) SetScheme(scheme *runtime.Scheme) {
-	if scheme != nil {
-		a.negotiatedSerializer = serializer.NegotiatedSerializerWrapper(runtime.SerializerInfo{
-			Serializer: serializer.NewCodecFactory(scheme).LegacyCodec(admissionv1alpha1.SchemeGroupVersion),
-		})
-	}
+	a.serviceResolver = sr
 }
 
 func (a *GenericAdmissionWebhook) SetClientCert(cert, key []byte) {
@@ -145,14 +127,8 @@ func (a *GenericAdmissionWebhook) SetExternalKubeClientSet(client clientset.Inte
 }
 
 func (a *GenericAdmissionWebhook) Validate() error {
-	if a.clientCert == nil || a.clientKey == nil {
-		return fmt.Errorf("the GenericAdmissionWebhook admission plugin requires a client certificate and the private key to be provided")
-	}
 	if a.hookSource == nil {
 		return fmt.Errorf("the GenericAdmissionWebhook admission plugin requires a Kubernetes client to be provided")
-	}
-	if a.negotiatedSerializer == nil {
-		return fmt.Errorf("the GenericAdmissionWebhook admission plugin requires a runtime.Scheme to be provided to derive a serializer")
 	}
 	go a.hookSource.Run(wait.NeverStop)
 	return nil
@@ -237,7 +213,7 @@ func (a *GenericAdmissionWebhook) callHook(ctx context.Context, h *v1alpha1.Exte
 	}
 
 	// Make the webhook request
-	request := createAdmissionReview(attr)
+	request := admissionv1alpha1.NewAdmissionReview(attr)
 	client, err := a.hookClient(h)
 	if err != nil {
 		return &ErrCallingWebhook{WebhookName: h.Name, Reason: err}
@@ -265,27 +241,20 @@ func (a *GenericAdmissionWebhook) hookClient(h *v1alpha1.ExternalAdmissionHook) 
 		return nil, err
 	}
 
-	var dial func(network, addr string) (net.Conn, error)
-	if a.proxyTransport != nil && a.proxyTransport.Dial != nil {
-		dial = a.proxyTransport.Dial
-	}
-
 	// TODO: cache these instead of constructing one each time
 	cfg := &rest.Config{
 		Host:    u.Host,
 		APIPath: u.Path,
 		TLSClientConfig: rest.TLSClientConfig{
-			ServerName: h.ClientConfig.Service.Name + "." + h.ClientConfig.Service.Namespace + ".svc",
-			CAData:     h.ClientConfig.CABundle,
-			CertData:   a.clientCert,
-			KeyData:    a.clientKey,
+			CAData:   h.ClientConfig.CABundle,
+			CertData: a.clientCert,
+			KeyData:  a.clientKey,
 		},
 		UserAgent: "kube-apiserver-admission",
 		Timeout:   30 * time.Second,
 		ContentConfig: rest.ContentConfig{
 			NegotiatedSerializer: a.negotiatedSerializer,
 		},
-		Dial: dial,
 	}
 	return rest.UnversionedRESTClientFor(cfg)
 }

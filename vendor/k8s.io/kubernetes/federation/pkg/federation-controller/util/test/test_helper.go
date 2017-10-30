@@ -25,7 +25,6 @@ import (
 	"testing"
 	"time"
 
-	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -34,6 +33,8 @@ import (
 	federationapi "k8s.io/kubernetes/federation/apis/federation/v1beta1"
 	"k8s.io/kubernetes/federation/pkg/federation-controller/util"
 	finalizersutil "k8s.io/kubernetes/federation/pkg/federation-controller/util/finalizers"
+	"k8s.io/kubernetes/pkg/api"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 
 	"github.com/golang/glog"
 	"github.com/stretchr/testify/assert"
@@ -72,14 +73,22 @@ func (wd *WatcherDispatcher) Stop() {
 	}
 }
 
+func copy(obj runtime.Object) runtime.Object {
+	objCopy, err := api.Scheme.DeepCopy(obj)
+	if err != nil {
+		panic(err)
+	}
+	return objCopy.(runtime.Object)
+}
+
 // Add sends an add event.
 func (wd *WatcherDispatcher) Add(obj runtime.Object) {
 	wd.Lock()
 	defer wd.Unlock()
-	wd.eventsSoFar = append(wd.eventsSoFar, &watch.Event{Type: watch.Added, Object: obj.DeepCopyObject()})
+	wd.eventsSoFar = append(wd.eventsSoFar, &watch.Event{Type: watch.Added, Object: copy(obj)})
 	for _, watcher := range wd.watchers {
 		if !watcher.IsStopped() {
-			watcher.Add(obj.DeepCopyObject())
+			watcher.Add(copy(obj))
 		}
 	}
 }
@@ -89,11 +98,11 @@ func (wd *WatcherDispatcher) Modify(obj runtime.Object) {
 	wd.Lock()
 	defer wd.Unlock()
 	glog.V(4).Infof("->WatcherDispatcher.Modify(%v)", obj)
-	wd.eventsSoFar = append(wd.eventsSoFar, &watch.Event{Type: watch.Modified, Object: obj.DeepCopyObject()})
+	wd.eventsSoFar = append(wd.eventsSoFar, &watch.Event{Type: watch.Modified, Object: copy(obj)})
 	for i, watcher := range wd.watchers {
 		if !watcher.IsStopped() {
 			glog.V(4).Infof("->Watcher(%d).Modify(%v)", i, obj)
-			watcher.Modify(obj.DeepCopyObject())
+			watcher.Modify(copy(obj))
 		} else {
 			glog.V(4).Infof("->Watcher(%d) is stopped.  Not calling Modify(%v)", i, obj)
 		}
@@ -104,10 +113,10 @@ func (wd *WatcherDispatcher) Modify(obj runtime.Object) {
 func (wd *WatcherDispatcher) Delete(lastValue runtime.Object) {
 	wd.Lock()
 	defer wd.Unlock()
-	wd.eventsSoFar = append(wd.eventsSoFar, &watch.Event{Type: watch.Deleted, Object: lastValue.DeepCopyObject()})
+	wd.eventsSoFar = append(wd.eventsSoFar, &watch.Event{Type: watch.Deleted, Object: copy(lastValue)})
 	for _, watcher := range wd.watchers {
 		if !watcher.IsStopped() {
-			watcher.Delete(lastValue.DeepCopyObject())
+			watcher.Delete(copy(lastValue))
 		}
 	}
 }
@@ -116,10 +125,10 @@ func (wd *WatcherDispatcher) Delete(lastValue runtime.Object) {
 func (wd *WatcherDispatcher) Error(errValue runtime.Object) {
 	wd.Lock()
 	defer wd.Unlock()
-	wd.eventsSoFar = append(wd.eventsSoFar, &watch.Event{Type: watch.Error, Object: errValue.DeepCopyObject()})
+	wd.eventsSoFar = append(wd.eventsSoFar, &watch.Event{Type: watch.Error, Object: copy(errValue)})
 	for _, watcher := range wd.watchers {
 		if !watcher.IsStopped() {
-			watcher.Error(errValue.DeepCopyObject())
+			watcher.Error(copy(errValue))
 		}
 	}
 }
@@ -128,10 +137,10 @@ func (wd *WatcherDispatcher) Error(errValue runtime.Object) {
 func (wd *WatcherDispatcher) Action(action watch.EventType, obj runtime.Object) {
 	wd.Lock()
 	defer wd.Unlock()
-	wd.eventsSoFar = append(wd.eventsSoFar, &watch.Event{Type: action, Object: obj.DeepCopyObject()})
+	wd.eventsSoFar = append(wd.eventsSoFar, &watch.Event{Type: action, Object: copy(obj)})
 	for _, watcher := range wd.watchers {
 		if !watcher.IsStopped() {
-			watcher.Action(action, obj.DeepCopyObject())
+			watcher.Action(action, copy(obj))
 		}
 	}
 }
@@ -195,7 +204,7 @@ func RegisterFakeOnCreate(resource string, client *core.Fake, watcher *WatcherDi
 		createAction := action.(core.CreateAction)
 		originalObj := createAction.GetObject()
 		// Create a copy of the object here to prevent data races while reading the object in go routine.
-		obj := originalObj.DeepCopyObject()
+		obj := copy(originalObj)
 		watcher.orderExecution <- func() {
 			glog.V(4).Infof("Object created: %v", obj)
 			watcher.Add(obj)
@@ -213,7 +222,7 @@ func RegisterFakeCopyOnCreate(resource string, client *core.Fake, watcher *Watch
 		createAction := action.(core.CreateAction)
 		originalObj := createAction.GetObject()
 		// Create a copy of the object here to prevent data races while reading the object in go routine.
-		obj := originalObj.DeepCopyObject()
+		obj := copy(originalObj)
 		watcher.orderExecution <- func() {
 			glog.V(4).Infof("Object created. Writing to channel: %v", obj)
 			watcher.Add(obj)
@@ -233,7 +242,7 @@ func RegisterFakeOnUpdate(resource string, client *core.Fake, watcher *WatcherDi
 		glog.V(7).Infof("Updating %s: %v", resource, updateAction.GetObject())
 
 		// Create a copy of the object here to prevent data races while reading the object in go routine.
-		obj := originalObj.DeepCopyObject()
+		obj := copy(originalObj)
 		operation := func() {
 			glog.V(4).Infof("Object updated %v", obj)
 			watcher.Modify(obj)
@@ -261,7 +270,7 @@ func RegisterFakeCopyOnUpdate(resource string, client *core.Fake, watcher *Watch
 		glog.V(7).Infof("Updating %s: %v", resource, updateAction.GetObject())
 
 		// Create a copy of the object here to prevent data races while reading the object in go routine.
-		obj := originalObj.DeepCopyObject()
+		obj := copy(originalObj)
 		operation := func() {
 			glog.V(4).Infof("Object updated. Writing to channel: %v", obj)
 			watcher.Modify(obj)
@@ -436,10 +445,4 @@ func AssertHasFinalizer(t *testing.T, obj runtime.Object, finalizer string) {
 	hasFinalizer, err := finalizersutil.HasFinalizer(obj, finalizer)
 	require.Nil(t, err)
 	assert.True(t, hasFinalizer)
-}
-
-func NewInt32(val int32) *int32 {
-	p := new(int32)
-	*p = val
-	return p
 }

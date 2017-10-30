@@ -37,8 +37,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/apiserver/pkg/features"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	utiltrace "k8s.io/apiserver/pkg/util/trace"
 	"k8s.io/client-go/tools/cache"
 )
@@ -53,6 +51,8 @@ type CacherConfig struct {
 
 	// An underlying storage.Versioner.
 	Versioner Versioner
+
+	Copier runtime.ObjectCopier
 
 	// The Cache will be caching objects of a given Type and assumes that they
 	// are all stored under ResourcePrefix directory in the underlying database.
@@ -159,6 +159,8 @@ type Cacher struct {
 	// Underlying storage.Interface.
 	storage Interface
 
+	copier runtime.ObjectCopier
+
 	// Expected type of objects in the underlying cache.
 	objectType reflect.Type
 
@@ -194,7 +196,6 @@ type Cacher struct {
 func NewCacherFromConfig(config CacherConfig) *Cacher {
 	watchCache := newWatchCache(config.CacheCapacity, config.KeyFunc, config.GetAttrsFunc)
 	listerWatcher := newCacherListerWatcher(config.Storage, config.ResourcePrefix, config.NewListFunc)
-	reflectorName := "storage/cacher.go:" + config.ResourcePrefix
 
 	// Give this error when it is constructed rather than when you get the
 	// first watch item, because it's much easier to track down that way.
@@ -208,9 +209,10 @@ func NewCacherFromConfig(config CacherConfig) *Cacher {
 	cacher := &Cacher{
 		ready:       newReady(),
 		storage:     config.Storage,
+		copier:      config.Copier,
 		objectType:  reflect.TypeOf(config.Type),
 		watchCache:  watchCache,
-		reflector:   cache.NewNamedReflector(reflectorName, listerWatcher, config.Type, watchCache, 0),
+		reflector:   cache.NewReflector(listerWatcher, config.Type, watchCache, 0),
 		versioner:   config.Versioner,
 		triggerFunc: config.TriggerPublisherFunc,
 		watcherIdx:  0,
@@ -338,7 +340,7 @@ func (c *Cacher) Watch(ctx context.Context, key string, resourceVersion string, 
 	c.Lock()
 	defer c.Unlock()
 	forget := forgetWatcher(c, c.watcherIdx, triggerValue, triggerSupported)
-	watcher := newCacheWatcher(watchRV, chanSize, initEvents, watchFilterFunction(key, pred), forget)
+	watcher := newCacheWatcher(c.copier, watchRV, chanSize, initEvents, watchFilterFunction(key, pred), forget)
 
 	c.watchers.addWatcher(watcher, c.watcherIdx, triggerValue, triggerSupported)
 	c.watcherIdx++
@@ -364,12 +366,6 @@ func (c *Cacher) Get(ctx context.Context, key string, resourceVersion string, ob
 	getRV, err := ParseListResourceVersion(resourceVersion)
 	if err != nil {
 		return err
-	}
-
-	if getRV == 0 && !c.ready.check() {
-		// If Cacher is not yet initialized and we don't require any specific
-		// minimal resource version, simply forward the request to storage.
-		return c.storage.Get(ctx, key, resourceVersion, objPtr, ignoreNotFound)
 	}
 
 	// Do not create a trace - it's not for free and there are tons
@@ -403,11 +399,9 @@ func (c *Cacher) Get(ctx context.Context, key string, resourceVersion string, ob
 
 // Implements storage.Interface.
 func (c *Cacher) GetToList(ctx context.Context, key string, resourceVersion string, pred SelectionPredicate, listObj runtime.Object) error {
-	pagingEnabled := utilfeature.DefaultFeatureGate.Enabled(features.APIListChunking)
-	if resourceVersion == "" || (pagingEnabled && (len(pred.Continue) > 0 || pred.Limit > 0)) {
+	if resourceVersion == "" {
 		// If resourceVersion is not specified, serve it from underlying
-		// storage (for backward compatibility). If a continuation or limit is
-		// requested, serve it from the underlying storage as well.
+		// storage (for backward compatibility).
 		return c.storage.GetToList(ctx, key, resourceVersion, pred, listObj)
 	}
 
@@ -417,12 +411,6 @@ func (c *Cacher) GetToList(ctx context.Context, key string, resourceVersion stri
 	listRV, err := ParseListResourceVersion(resourceVersion)
 	if err != nil {
 		return err
-	}
-
-	if listRV == 0 && !c.ready.check() {
-		// If Cacher is not yet initialized and we don't require any specific
-		// minimal resource version, simply forward the request to storage.
-		return c.storage.GetToList(ctx, key, resourceVersion, pred, listObj)
 	}
 
 	trace := utiltrace.New(fmt.Sprintf("cacher %v: List", c.objectType.String()))
@@ -458,7 +446,7 @@ func (c *Cacher) GetToList(ctx context.Context, key string, resourceVersion stri
 		}
 	}
 	if c.versioner != nil {
-		if err := c.versioner.UpdateList(listObj, readResourceVersion, ""); err != nil {
+		if err := c.versioner.UpdateList(listObj, readResourceVersion); err != nil {
 			return err
 		}
 	}
@@ -467,16 +455,9 @@ func (c *Cacher) GetToList(ctx context.Context, key string, resourceVersion stri
 
 // Implements storage.Interface.
 func (c *Cacher) List(ctx context.Context, key string, resourceVersion string, pred SelectionPredicate, listObj runtime.Object) error {
-	pagingEnabled := utilfeature.DefaultFeatureGate.Enabled(features.APIListChunking)
-	hasContinuation := pagingEnabled && len(pred.Continue) > 0
-	hasLimit := pagingEnabled && pred.Limit > 0 && resourceVersion != "0"
-	if resourceVersion == "" || hasContinuation || hasLimit {
+	if resourceVersion == "" {
 		// If resourceVersion is not specified, serve it from underlying
-		// storage (for backward compatibility). If a continuation is
-		// requested, serve it from the underlying storage as well.
-		// Limits are only sent to storage when resourceVersion is non-zero
-		// since the watch cache isn't able to perform continuations, and
-		// limits are ignored when resource version is zero.
+		// storage (for backward compatibility).
 		return c.storage.List(ctx, key, resourceVersion, pred, listObj)
 	}
 
@@ -486,12 +467,6 @@ func (c *Cacher) List(ctx context.Context, key string, resourceVersion string, p
 	listRV, err := ParseListResourceVersion(resourceVersion)
 	if err != nil {
 		return err
-	}
-
-	if listRV == 0 && !c.ready.check() {
-		// If Cacher is not yet initialized and we don't require any specific
-		// minimal resource version, simply forward the request to storage.
-		return c.storage.List(ctx, key, resourceVersion, pred, listObj)
 	}
 
 	trace := utiltrace.New(fmt.Sprintf("cacher %v: List", c.objectType.String()))
@@ -533,7 +508,7 @@ func (c *Cacher) List(ctx context.Context, key string, resourceVersion string, p
 	}
 	trace.Step(fmt.Sprintf("Filtered %d items", listVal.Len()))
 	if c.versioner != nil {
-		if err := c.versioner.UpdateList(listObj, readResourceVersion, ""); err != nil {
+		if err := c.versioner.UpdateList(listObj, readResourceVersion); err != nil {
 			return err
 		}
 	}
@@ -549,8 +524,11 @@ func (c *Cacher) GuaranteedUpdate(
 	if elem, exists, err := c.watchCache.GetByKey(key); err != nil {
 		glog.Errorf("GetByKey returned error: %v", err)
 	} else if exists {
-		currObj := elem.(*storeElement).Object.DeepCopyObject()
-		return c.storage.GuaranteedUpdate(ctx, key, ptrToType, ignoreNotFound, preconditions, tryUpdate, currObj)
+		currObj, copyErr := c.copier.Copy(elem.(*storeElement).Object)
+		if copyErr == nil {
+			return c.storage.GuaranteedUpdate(ctx, key, ptrToType, ignoreNotFound, preconditions, tryUpdate, currObj)
+		}
+		glog.Errorf("couldn't copy object: %v", copyErr)
 	}
 	// If we couldn't get the object, fallback to no-suggestion.
 	return c.storage.GuaranteedUpdate(ctx, key, ptrToType, ignoreNotFound, preconditions, tryUpdate)
@@ -778,6 +756,7 @@ func (c *errWatcher) Stop() {
 // cacherWatch implements watch.Interface
 type cacheWatcher struct {
 	sync.Mutex
+	copier  runtime.ObjectCopier
 	input   chan *watchCacheEvent
 	result  chan watch.Event
 	done    chan struct{}
@@ -786,8 +765,9 @@ type cacheWatcher struct {
 	forget  func(bool)
 }
 
-func newCacheWatcher(resourceVersion uint64, chanSize int, initEvents []*watchCacheEvent, filter watchFilterFunc, forget func(bool)) *cacheWatcher {
+func newCacheWatcher(copier runtime.ObjectCopier, resourceVersion uint64, chanSize int, initEvents []*watchCacheEvent, filter watchFilterFunc, forget func(bool)) *cacheWatcher {
 	watcher := &cacheWatcher{
+		copier:  copier,
 		input:   make(chan *watchCacheEvent, chanSize),
 		result:  make(chan watch.Event, chanSize),
 		done:    make(chan struct{}),
@@ -878,11 +858,26 @@ func (c *cacheWatcher) sendWatchCacheEvent(event *watchCacheEvent) {
 	var watchEvent watch.Event
 	switch {
 	case curObjPasses && !oldObjPasses:
-		watchEvent = watch.Event{Type: watch.Added, Object: event.Object.DeepCopyObject()}
+		object, err := c.copier.Copy(event.Object)
+		if err != nil {
+			utilruntime.HandleError(fmt.Errorf("unexpected copy error: %v", err))
+			return
+		}
+		watchEvent = watch.Event{Type: watch.Added, Object: object}
 	case curObjPasses && oldObjPasses:
-		watchEvent = watch.Event{Type: watch.Modified, Object: event.Object.DeepCopyObject()}
+		object, err := c.copier.Copy(event.Object)
+		if err != nil {
+			utilruntime.HandleError(fmt.Errorf("unexpected copy error: %v", err))
+			return
+		}
+		watchEvent = watch.Event{Type: watch.Modified, Object: object}
 	case !curObjPasses && oldObjPasses:
-		watchEvent = watch.Event{Type: watch.Deleted, Object: event.PrevObject.DeepCopyObject()}
+		object, err := c.copier.Copy(event.PrevObject)
+		if err != nil {
+			utilruntime.HandleError(fmt.Errorf("unexpected copy error: %v", err))
+			return
+		}
+		watchEvent = watch.Event{Type: watch.Deleted, Object: object}
 	}
 
 	// We need to ensure that if we put event X to the c.result, all
@@ -968,14 +963,6 @@ func (r *ready) wait() {
 		r.c.Wait()
 	}
 	r.c.L.Unlock()
-}
-
-// TODO: Make check() function more sophisticated, in particular
-// allow it to behave as "waitWithTimeout".
-func (r *ready) check() bool {
-	r.c.L.Lock()
-	defer r.c.L.Unlock()
-	return r.ok
 }
 
 func (r *ready) set(ok bool) {

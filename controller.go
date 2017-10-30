@@ -23,20 +23,21 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/golang/glog"
-
-	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	clientset "k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
-	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/rest"
+	"k8s.io/kubernetes/pkg/api/v1"
 	nodeutilv1 "k8s.io/kubernetes/pkg/api/v1/node"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	"k8s.io/kubernetes/pkg/cloudprovider"
 
+	"github.com/giantswarm/certificatetpr"
 	_ "github.com/giantswarm/kvm-operator-node-controller/provider"
+	"github.com/giantswarm/microerror"
+	"github.com/giantswarm/micrologger"
 )
 
 const (
@@ -62,6 +63,7 @@ type controller struct {
 	kubeClient        clientset.Interface
 	cloud             cloudprovider.Interface
 	nodeMonitorPeriod time.Duration
+	logger            micrologger.Logger
 }
 
 func main() {
@@ -76,13 +78,13 @@ func main() {
 		return
 	}
 
-	var kubeconfig string
-	var master string
+	var clusterAPI string
+	var clusterID string
 	var help bool
 
-	flag.StringVar(&kubeconfig, "kubeconfig", "", "absolute path to the kubeconfig file")
-	flag.StringVar(&master, "master", "", "master url")
-	flag.BoolVar(&help, "help", false, "Print usage and exit")
+	flag.StringVar(&clusterAPI, "cluster-api", "", "kubernetes api endpoint of guest cluster")
+	flag.StringVar(&clusterID, "cluster-id", "", "id of guest cluster (e.g. XXXXX)")
+	flag.BoolVar(&help, "help", false, "print usage and exit")
 	flag.Parse()
 
 	// Print usage.
@@ -91,22 +93,21 @@ func main() {
 		return
 	}
 
-	// Create kubeclient config.
-	config, err := clientcmd.BuildConfigFromFlags(master, kubeconfig)
-	if err != nil {
-		glog.Fatal(err)
+	// Check clusterAPI and clusterID are set.
+	if clusterAPI == "" || clusterID == "" {
+		panic(fmt.Sprint("guest cluster api and id must be set"))
 	}
 
-	// Create the client.
-	kubeClient, err := clientset.NewForConfig(config)
+	// Get guest cluster client.
+	kubeClient, err := newGuestClientFromSecret(clusterAPI, clusterID)
 	if err != nil {
-		glog.Fatal(err)
+		panic(fmt.Sprintf("failed to initialize kubernetes client: %v", err))
 	}
 
 	// Initialize kubernetes provider.
 	cloud, err := cloudprovider.InitCloudProvider("kubernetes", "")
 	if err != nil {
-		glog.Fatalf("failed to initialize cloud provider: %v", err)
+		panic(fmt.Sprintf("failed to initialize cloud provider: %v", err))
 	}
 
 	// Create controller instance.
@@ -126,10 +127,17 @@ func newController(
 	kubeClient clientset.Interface,
 	cloud cloudprovider.Interface,
 	nodeMonitorPeriod time.Duration) *controller {
+
+	logger, err := micrologger.New(micrologger.DefaultConfig())
+	if err != nil {
+		microerror.Mask(err)
+	}
+
 	return &controller{
 		kubeClient:        kubeClient,
 		cloud:             cloud,
 		nodeMonitorPeriod: nodeMonitorPeriod,
+		logger:            logger,
 	}
 }
 
@@ -138,13 +146,13 @@ func (c *controller) Run(stopCh chan struct{}) {
 	defer utilruntime.HandleCrash()
 
 	// Let the workers stop when we are done
-	glog.Info("Starting kvm-operator node controller")
+	c.logger.Log("info", "starting kvm-operator node controller")
 
 	// Start a loop to periodically check if any nodes have been deleted from cloudprovider
 	go wait.Until(c.MonitorNode, c.nodeMonitorPeriod, stopCh)
 
 	<-stopCh
-	glog.Info("Stopping kvm-operator node controller")
+	c.logger.Log("info", "stopping kvm-operator node controller")
 }
 
 // Monitor node queries the cloudprovider for non-ready nodes and deletes them
@@ -160,7 +168,7 @@ func (c *controller) MonitorNode() {
 	// Get nodes known by kubernetes cluster.
 	nodes, err := c.kubeClient.CoreV1().Nodes().List(metav1.ListOptions{ResourceVersion: "0"})
 	if err != nil {
-		glog.Errorf("Error monitoring node status: %v", err)
+		c.logger.Log("error", "error monitoring node status", "trace", microerror.Mask(err))
 		return
 	}
 
@@ -168,7 +176,7 @@ func (c *controller) MonitorNode() {
 		var currentReadyCondition *v1.NodeCondition
 		node := &nodes.Items[i]
 
-		glog.Infof("Checking node %s", node.Name)
+		c.logger.Log("info", "checking node status", "node", node.Name)
 
 		// Try to get the current node status
 		// If node status is empty, then kubelet has not posted ready status yet. In this case,
@@ -181,13 +189,16 @@ func (c *controller) MonitorNode() {
 			name := node.Name
 			node, err = c.kubeClient.CoreV1().Nodes().Get(name, metav1.GetOptions{})
 			if err != nil {
-				glog.Errorf("Failed while getting a Node to retry updating NodeStatus. Probably Node %s was deleted.", name)
+				c.logger.Log(
+					"info", "failed while getting a node to retry updating NodeStatus. Probably node was deleted.",
+					"node", name,
+				)
 				break
 			}
 			time.Sleep(retrySleepTime)
 		}
 		if currentReadyCondition == nil {
-			glog.Errorf("Update status of Node %v from Controller exceeds retry count or the Node was deleted.", node.Name)
+			c.logger.Log("error", "update status of node from Controller exceeds retry count or the Node was deleted", "node", node.Name)
 			continue
 		}
 		// If the known node status says that Node is NotReady, then check if the node has been removed
@@ -198,7 +209,11 @@ func (c *controller) MonitorNode() {
 				// doesn't, delete the node immediately.
 				exists, err := ensureNodeExists(instances, node)
 				if err != nil {
-					glog.Errorf("Error getting data for node %s from cloud provider: %v", node.Name, err)
+					c.logger.Log(
+						"error", "error getting data for node from cloud provider",
+						"node", node.Name,
+						"trace", microerror.Mask(err),
+					)
 					continue
 				}
 
@@ -207,18 +222,29 @@ func (c *controller) MonitorNode() {
 					continue
 				}
 
-				glog.Infof("Deleting node since it is no longer present in cloud provider: %s", node.Name)
+				c.logger.Log(
+					"info", "deleting node since it is no longer present in cloud provider",
+					"node", node.Name,
+				)
 
 				go func(nodeName string) {
 					defer utilruntime.HandleCrash()
 					if err := c.kubeClient.CoreV1().Nodes().Delete(nodeName, nil); err != nil {
-						glog.Errorf("unable to delete node %q: %v", nodeName, err)
+						c.logger.Log(
+							"error", "unable to delete node",
+							"node", node.Name,
+							"trace", microerror.Mask(err),
+						)
 					}
 				}(node.Name)
 
 			}
 		}
-		glog.Infof("Node %s Ready state is %s.", node.Name, currentReadyCondition.Status)
+		c.logger.Log(
+			"info", "node state",
+			"node", node.Name,
+			"state", currentReadyCondition.Status,
+		)
 	}
 }
 
@@ -233,4 +259,51 @@ func ensureNodeExists(instances cloudprovider.Instances, node *v1.Node) (bool, e
 	}
 
 	return true, nil
+}
+
+func newGuestClientFromSecret(clusterAPI, clusterID string) (clientset.Interface, error) {
+	// Get host cluster client to retrieve certificates.
+	var secret *v1.Secret
+	{
+		config, err := rest.InClusterConfig()
+		if err != nil {
+			return nil, microerror.Mask(err)
+		}
+		// creates the clientset
+		hostClient, err := clientset.NewForConfig(config)
+		if err != nil {
+			return nil, microerror.Mask(err)
+		}
+
+		// Get API secret with certificates.
+		secretName := fmt.Sprintf("%s-api", clusterID)
+
+		manifest, err := hostClient.CoreV1().Secrets(metav1.NamespaceDefault).Get(secretName, metav1.GetOptions{})
+		if err != nil {
+			return nil, microerror.Mask(err)
+		}
+		secret = manifest
+	}
+
+	// XXX(r7vme): Not using operatorkit k8s client here, because it does not support
+	// TLS certificates as raw data, only supports files.
+	//
+	// Initialize client config
+	var restConfig *rest.Config
+
+	restConfig = &rest.Config{
+		Host: clusterAPI,
+		TLSClientConfig: rest.TLSClientConfig{
+			CertData: secret.Data[string(certificatetpr.Crt)],
+			KeyData:  secret.Data[string(certificatetpr.Key)],
+			CAData:   secret.Data[string(certificatetpr.CA)],
+		},
+	}
+
+	client, err := clientset.NewForConfig(restConfig)
+	if err != nil {
+		return nil, microerror.Mask(err)
+	}
+
+	return client, nil
 }

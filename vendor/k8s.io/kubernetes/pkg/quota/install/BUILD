@@ -1,5 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["notice"])
+
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
@@ -8,12 +10,12 @@ load(
 go_library(
     name = "go_default_library",
     srcs = ["registry.go"],
-    importpath = "k8s.io/kubernetes/pkg/quota/install",
+    tags = ["automanaged"],
     deps = [
+        "//pkg/client/clientset_generated/clientset:go_default_library",
+        "//pkg/client/informers/informers_generated/externalversions:go_default_library",
         "//pkg/quota:go_default_library",
         "//pkg/quota/evaluator/core:go_default_library",
-        "//vendor/k8s.io/client-go/informers:go_default_library",
-        "//vendor/k8s.io/client-go/kubernetes:go_default_library",
     ],
 )
 

@@ -1,5 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["notice"])
+
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
@@ -9,14 +11,13 @@ load(
 go_library(
     name = "go_default_library",
     srcs = ["abac.go"],
-    importpath = "k8s.io/kubernetes/pkg/auth/authorizer/abac",
+    tags = ["automanaged"],
     deps = [
         "//pkg/apis/abac:go_default_library",
         "//pkg/apis/abac/latest:go_default_library",
         "//pkg/apis/abac/v0:go_default_library",
         "//vendor/github.com/golang/glog:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/authentication/user:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/authorization/authorizer:go_default_library",
     ],
 )
@@ -35,8 +36,8 @@ go_test(
     data = [
         ":example_policy",
     ],
-    importpath = "k8s.io/kubernetes/pkg/auth/authorizer/abac",
     library = ":go_default_library",
+    tags = ["automanaged"],
     deps = [
         "//pkg/apis/abac:go_default_library",
         "//pkg/apis/abac/v0:go_default_library",

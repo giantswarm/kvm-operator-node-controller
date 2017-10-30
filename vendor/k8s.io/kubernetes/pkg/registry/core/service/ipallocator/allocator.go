@@ -33,24 +33,14 @@ type Interface interface {
 	AllocateNext() (net.IP, error)
 	Release(net.IP) error
 	ForEach(func(net.IP))
-
-	// For testing
-	Has(ip net.IP) bool
 }
 
 var (
 	ErrFull              = errors.New("range is full")
+	ErrNotInRange        = errors.New("provided IP is not in the valid range")
 	ErrAllocated         = errors.New("provided IP is already allocated")
 	ErrMismatchedNetwork = errors.New("the provided network does not match the current range")
 )
-
-type ErrNotInRange struct {
-	ValidRange string
-}
-
-func (e *ErrNotInRange) Error() string {
-	return fmt.Sprintf("provided IP is not in the valid range. The range of valid IPs is %s", e.ValidRange)
-}
 
 // Range is a contiguous block of IPs that can be allocated atomically.
 //
@@ -142,7 +132,7 @@ func (r *Range) CIDR() net.IPNet {
 func (r *Range) Allocate(ip net.IP) error {
 	ok, offset := r.contains(ip)
 	if !ok {
-		return &ErrNotInRange{r.net.String()}
+		return ErrNotInRange
 	}
 
 	allocated, err := r.alloc.Allocate(offset)
@@ -263,8 +253,8 @@ func calculateIPOffset(base *big.Int, ip net.IP) int {
 // RangeSize returns the size of a range in valid addresses.
 func RangeSize(subnet *net.IPNet) int64 {
 	ones, bits := subnet.Mask.Size()
-	if bits == 32 && (bits-ones) >= 31 || bits == 128 && (bits-ones) >= 63 {
-		return 0
+	if (bits - ones) >= 31 {
+		panic("masks greater than 31 bits are not supported")
 	}
 	max := int64(1) << uint(bits-ones)
 	return max

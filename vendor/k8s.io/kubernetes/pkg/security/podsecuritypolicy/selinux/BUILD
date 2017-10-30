@@ -1,5 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["notice"])
+
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
@@ -14,7 +16,7 @@ go_library(
         "runasany.go",
         "types.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/security/podsecuritypolicy/selinux",
+    tags = ["automanaged"],
     deps = [
         "//pkg/api:go_default_library",
         "//pkg/apis/extensions:go_default_library",
@@ -28,8 +30,8 @@ go_test(
         "mustrunas_test.go",
         "runasany_test.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/security/podsecuritypolicy/selinux",
     library = ":go_default_library",
+    tags = ["automanaged"],
     deps = [
         "//pkg/api:go_default_library",
         "//pkg/apis/extensions:go_default_library",

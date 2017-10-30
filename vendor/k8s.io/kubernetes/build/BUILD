@@ -21,27 +21,40 @@ filegroup(
     tags = ["automanaged"],
 )
 
+docker_build(
+    name = "busybox",
+    debs = [
+        "@busybox_deb//file",
+    ],
+    symlinks = {
+        "/bin/sh": "/bin/busybox",
+        "/usr/bin/busybox": "/bin/busybox",
+        "/usr/sbin/busybox": "/bin/busybox",
+        "/sbin/busybox": "/bin/busybox",
+    },
+)
+
 # This list should roughly match kube::build::get_docker_wrapped_binaries()
 # in build/common.sh.
 DOCKERIZED_BINARIES = {
     "cloud-controller-manager": {
-        "base": "@official_busybox//image",
+        "base": ":busybox",
         "target": "//cmd/cloud-controller-manager:cloud-controller-manager",
     },
     "kube-apiserver": {
-        "base": "@official_busybox//image",
+        "base": ":busybox",
         "target": "//cmd/kube-apiserver:kube-apiserver",
     },
     "kube-controller-manager": {
-        "base": "@official_busybox//image",
+        "base": ":busybox",
         "target": "//cmd/kube-controller-manager:kube-controller-manager",
     },
     "kube-scheduler": {
-        "base": "@official_busybox//image",
+        "base": ":busybox",
         "target": "//plugin/cmd/kube-scheduler:kube-scheduler",
     },
     "kube-proxy": {
-        "base": "@debian-iptables-amd64//image",
+        "base": "@debian-iptables-amd64//image:image.tar",
         "target": "//cmd/kube-proxy:kube-proxy",
     },
 }
@@ -80,16 +93,10 @@ genrule(
     cmd = """
 grep ^STABLE_BUILD_SCM_REVISION bazel-out/stable-status.txt \
     | awk '{print $$2}' \
-    | sed -e 's/^v//' -Ee 's/-([a-z]+)/~\\1/' -e 's/-/+/g' \
+    | sed -e 's/^v//' -e 's/[\+-]/_/g' \
     >$@
 """,
     stamp = 1,
-)
-
-genrule(
-    name = "cni_package_version",
-    outs = ["cni_version"],
-    cmd = "echo 0.5.1 >$@",
 )
 
 release_filegroup(
@@ -143,6 +150,7 @@ filegroup(
         "//cmd/genyaml",
         "//cmd/kubemark",  # TODO: server platforms only
         "//cmd/linkcheck",
+        "//cmd/mungedocs",
         "//federation/cmd/genfeddocs",
         "//test/e2e:e2e.test",
         "//test/e2e_node:e2e_node.test",  # TODO: server platforms only

@@ -38,14 +38,7 @@ func TestPatchObject(t *testing.T) {
 		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			switch p, m := req.URL.Path, req.Method; {
 			case p == "/namespaces/test/services/frontend" && (m == "PATCH" || m == "GET"):
-				obj := svc.Items[0]
-
-				// ensure patched object reflects successful
-				// patch edits from the client
-				if m == "PATCH" {
-					obj.Spec.Type = "NodePort"
-				}
-				return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: objBody(codec, &obj)}, nil
+				return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: objBody(codec, &svc.Items[0])}, nil
 			default:
 				t.Fatalf("unexpected request: %#v\n%#v", req.URL, req)
 				return nil, nil
@@ -123,9 +116,22 @@ func TestPatchNoop(t *testing.T) {
 	}
 	tf.Namespace = "test"
 
+	// No-op
+	{
+		buf := bytes.NewBuffer([]byte{})
+		cmd := NewCmdPatch(f, buf)
+		cmd.Flags().Set("namespace", "test")
+		cmd.Flags().Set("patch", `{}`)
+		cmd.Run(cmd, []string{"services", "frontend"})
+		if buf.String() != "service \"baz\" not patched\n" {
+			t.Errorf("unexpected output: %s", buf.String())
+		}
+	}
+
 	// Patched
 	{
-		patchObject = patchObject.DeepCopy()
+		copied, _ := api.Scheme.DeepCopy(patchObject)
+		patchObject = copied.(*api.Service)
 		if patchObject.Annotations == nil {
 			patchObject.Annotations = map[string]string{}
 		}
@@ -144,7 +150,11 @@ func TestPatchNoop(t *testing.T) {
 func TestPatchObjectFromFileOutput(t *testing.T) {
 	_, svc, _ := testData()
 
-	svcCopy := svc.Items[0].DeepCopy()
+	svcCopyObj, err := api.Scheme.DeepCopy(&svc.Items[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	svcCopy := svcCopyObj.(*api.Service)
 	if svcCopy.Labels == nil {
 		svcCopy.Labels = map[string]string{}
 	}

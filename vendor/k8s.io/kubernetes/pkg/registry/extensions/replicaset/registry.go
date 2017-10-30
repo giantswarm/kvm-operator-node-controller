@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 )
 
@@ -82,7 +83,7 @@ func (s *storage) CreateReplicaSet(ctx genericapirequest.Context, replicaSet *ex
 }
 
 func (s *storage) UpdateReplicaSet(ctx genericapirequest.Context, replicaSet *extensions.ReplicaSet) (*extensions.ReplicaSet, error) {
-	obj, _, err := s.Update(ctx, replicaSet.Name, rest.DefaultUpdatedObjectInfo(replicaSet))
+	obj, _, err := s.Update(ctx, replicaSet.Name, rest.DefaultUpdatedObjectInfo(replicaSet, api.Scheme))
 	if err != nil {
 		return nil, err
 	}

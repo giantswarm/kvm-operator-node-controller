@@ -20,15 +20,15 @@ import (
 	"testing"
 	"time"
 
-	"k8s.io/api/core/v1"
-	"k8s.io/client-go/kubernetes/fake"
-
+	"github.com/giantswarm/micrologger"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/kubernetes/pkg/api/v1"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset/fake"
 	"k8s.io/kubernetes/pkg/cloudprovider"
 	fakecloud "k8s.io/kubernetes/pkg/cloudprovider/providers/fake"
-	"k8s.io/kubernetes/pkg/controller/testutil"
+	"k8s.io/kubernetes/pkg/controller/node/testutil"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -95,6 +95,11 @@ func TestNodeDeleted(t *testing.T) {
 		DeleteWaitChan: make(chan struct{}),
 	}
 
+	logger, err := micrologger.New(micrologger.DefaultConfig())
+	if err != nil {
+		t.Error(err)
+	}
+
 	controller := &controller{
 		kubeClient: fnh,
 		cloud: &fakecloud.FakeCloud{
@@ -103,6 +108,7 @@ func TestNodeDeleted(t *testing.T) {
 			},
 			Err: cloudprovider.InstanceNotFound,
 		},
+		logger:            logger,
 		nodeMonitorPeriod: 1 * time.Second,
 	}
 

@@ -51,9 +51,7 @@ func registerRateLimiterMetric(ownerName string) error {
 		Help:      fmt.Sprintf("A metric measuring the saturation of the rate limiter for %v", ownerName),
 	})
 	rateLimiterMetrics[ownerName] = metric
-	if err := prometheus.Register(metric); err != nil {
-		return fmt.Errorf("error registering rate limiter usage metric: %v", err)
-	}
+	prometheus.MustRegister(metric)
 	return nil
 }
 

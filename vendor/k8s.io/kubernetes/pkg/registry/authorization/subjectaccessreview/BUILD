@@ -1,5 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["notice"])
+
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
@@ -9,7 +11,7 @@ load(
 go_library(
     name = "go_default_library",
     srcs = ["rest.go"],
-    importpath = "k8s.io/kubernetes/pkg/registry/authorization/subjectaccessreview",
+    tags = ["automanaged"],
     deps = [
         "//pkg/apis/authorization:go_default_library",
         "//pkg/apis/authorization/validation:go_default_library",
@@ -37,8 +39,8 @@ filegroup(
 go_test(
     name = "go_default_test",
     srcs = ["rest_test.go"],
-    importpath = "k8s.io/kubernetes/pkg/registry/authorization/subjectaccessreview",
     library = ":go_default_library",
+    tags = ["automanaged"],
     deps = [
         "//pkg/apis/authorization:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/authentication/user:go_default_library",

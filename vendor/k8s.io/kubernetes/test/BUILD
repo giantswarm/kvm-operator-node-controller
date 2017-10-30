@@ -1,5 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["notice"])
+
 filegroup(
     name = "package-srcs",
     srcs = glob(["**"]),
@@ -12,6 +14,7 @@ filegroup(
     srcs = [
         ":package-srcs",
         "//test/e2e:all-srcs",
+        "//test/e2e_federation:all-srcs",
         "//test/e2e_node:all-srcs",
         "//test/fixtures:all-srcs",
         "//test/images:all-srcs",

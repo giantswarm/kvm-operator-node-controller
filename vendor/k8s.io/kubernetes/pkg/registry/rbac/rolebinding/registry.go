@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/rbac"
 )
 
@@ -62,7 +63,7 @@ func (s *storage) CreateRoleBinding(ctx genericapirequest.Context, roleBinding *
 }
 
 func (s *storage) UpdateRoleBinding(ctx genericapirequest.Context, roleBinding *rbac.RoleBinding) error {
-	_, _, err := s.Update(ctx, roleBinding.Name, rest.DefaultUpdatedObjectInfo(roleBinding))
+	_, _, err := s.Update(ctx, roleBinding.Name, rest.DefaultUpdatedObjectInfo(roleBinding, api.Scheme))
 	return err
 }
 

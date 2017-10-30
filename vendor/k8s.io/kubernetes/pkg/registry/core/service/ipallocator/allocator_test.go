@@ -78,19 +78,16 @@ func TestAllocate(t *testing.T) {
 	if err := r.Release(released); err != nil {
 		t.Fatal(err)
 	}
-	err = r.Allocate(net.ParseIP("192.168.0.1"))
-	if _, ok := err.(*ErrNotInRange); !ok {
+	if err := r.Allocate(net.ParseIP("192.168.0.1")); err != ErrNotInRange {
 		t.Fatal(err)
 	}
 	if err := r.Allocate(net.ParseIP("192.168.1.1")); err != ErrAllocated {
 		t.Fatal(err)
 	}
-	err = r.Allocate(net.ParseIP("192.168.1.0"))
-	if _, ok := err.(*ErrNotInRange); !ok {
+	if err := r.Allocate(net.ParseIP("192.168.1.0")); err != ErrNotInRange {
 		t.Fatal(err)
 	}
-	err = r.Allocate(net.ParseIP("192.168.1.255"))
-	if _, ok := err.(*ErrNotInRange); !ok {
+	if err := r.Allocate(net.ParseIP("192.168.1.255")); err != ErrNotInRange {
 		t.Fatal(err)
 	}
 	if f := r.Free(); f != 1 {
@@ -166,41 +163,18 @@ func TestAllocateSmall(t *testing.T) {
 }
 
 func TestRangeSize(t *testing.T) {
-	testCases := []struct {
-		name  string
-		cidr  string
-		addrs int64
-	}{
-		{
-			name:  "supported IPv4 cidr",
-			cidr:  "192.168.1.0/24",
-			addrs: 256,
-		},
-		{
-			name:  "unsupported IPv4 cidr",
-			cidr:  "192.168.1.0/1",
-			addrs: 0,
-		},
-		{
-			name:  "supported IPv6 cidr",
-			cidr:  "2001:db8::/98",
-			addrs: 1073741824,
-		},
-		{
-			name:  "unsupported IPv6 mask",
-			cidr:  "2001:db8::/65",
-			addrs: 0,
-		},
+	testCases := map[string]int64{
+		"192.168.1.0/24": 256,
+		"192.168.1.0/32": 1,
+		"192.168.1.0/31": 2,
 	}
-
-	for _, tc := range testCases {
-		_, cidr, err := net.ParseCIDR(tc.cidr)
+	for k, v := range testCases {
+		_, cidr, err := net.ParseCIDR(k)
 		if err != nil {
-			t.Errorf("failed to parse cidr for test %s, unexpected error: '%s'", tc.name, err)
+			t.Fatal(err)
 		}
-		if size := RangeSize(cidr); size != tc.addrs {
-			t.Errorf("test %s failed. %s should have a range size of %d, got %d",
-				tc.name, tc.cidr, tc.addrs, size)
+		if size := RangeSize(cidr); size != v {
+			t.Errorf("%s should have a range size of %d, got %d", k, v, size)
 		}
 	}
 }

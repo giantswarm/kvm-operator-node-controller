@@ -1,5 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["notice"])
+
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
@@ -15,7 +17,7 @@ go_library(
         "hawkular.go",
         "influxdb.go",
     ],
-    importpath = "k8s.io/kubernetes/plugin/pkg/admission/initialresources",
+    tags = ["automanaged"],
     deps = [
         "//pkg/api:go_default_library",
         "//vendor/cloud.google.com/go/compute/metadata:go_default_library",
@@ -43,8 +45,8 @@ go_test(
         "hawkular_test.go",
         "influxdb_test.go",
     ],
-    importpath = "k8s.io/kubernetes/plugin/pkg/admission/initialresources",
     library = ":go_default_library",
+    tags = ["automanaged"],
     deps = [
         "//pkg/api:go_default_library",
         "//vendor/github.com/stretchr/testify/require:go_default_library",

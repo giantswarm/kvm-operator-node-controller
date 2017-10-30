@@ -2,7 +2,7 @@ Name: kubernetes-cni
 Version: OVERRIDE_THIS
 Release: 00
 License: ASL 2.0
-Summary: Container Cluster Manager - CNI plugins
+Summary: Container Cluster Manager
 
 URL: https://kubernetes.io
 
@@ -10,8 +10,7 @@ URL: https://kubernetes.io
 Binaries required to provision container networking.
 
 %prep
-mkdir -p ./bin
-tar -C ./bin -xz -f cni-plugins-amd64-v0.6.0.tgz
+tar xzfv cni-*.tar.gz
 
 %install
 

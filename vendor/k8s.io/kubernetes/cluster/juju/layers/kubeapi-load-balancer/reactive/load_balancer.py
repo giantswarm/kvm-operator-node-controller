@@ -29,7 +29,6 @@ from charms.layer import nginx
 from subprocess import Popen
 from subprocess import PIPE
 from subprocess import STDOUT
-from subprocess import CalledProcessError
 
 
 @when('certificates.available')
@@ -50,18 +49,6 @@ def request_server_certificates(tls):
     tls.request_server_cert(common_name, sans, certificate_name)
 
 
-@when('config.changed.port')
-def close_old_port():
-    config = hookenv.config()
-    old_port = config.previous('port')
-    if not old_port:
-        return
-    try:
-        hookenv.close_port(old_port)
-    except CalledProcessError:
-        hookenv.log('Port %d already closed, skipping.' % old_port)
-
-
 @when('nginx.available', 'apiserver.available',
       'certificates.server.cert.available')
 def install_load_balancer(apiserver, tls):
@@ -72,27 +59,24 @@ def install_load_balancer(apiserver, tls):
     cert_exists = server_cert_path and os.path.isfile(server_cert_path)
     server_key_path = layer_options.get('server_key_path')
     key_exists = server_key_path and os.path.isfile(server_key_path)
-    # Do both the key and certificate exist?
+    # Do both the the key and certificate exist?
     if cert_exists and key_exists:
         # At this point the cert and key exist, and they are owned by root.
         chown = ['chown', 'www-data:www-data', server_cert_path]
-
         # Change the owner to www-data so the nginx process can read the cert.
         subprocess.call(chown)
         chown = ['chown', 'www-data:www-data', server_key_path]
-
         # Change the owner to www-data so the nginx process can read the key.
         subprocess.call(chown)
 
-        port = hookenv.config('port')
-        hookenv.open_port(port)
+        hookenv.open_port(hookenv.config('port'))
         services = apiserver.services()
         nginx.configure_site(
                 'apilb',
                 'apilb.conf',
                 server_name='_',
                 services=services,
-                port=port,
+                port=hookenv.config('port'),
                 server_certificate=server_cert_path,
                 server_key=server_key_path,
         )

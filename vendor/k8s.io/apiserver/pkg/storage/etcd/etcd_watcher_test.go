@@ -295,12 +295,12 @@ func TestSendResultDeleteEventHaveLatestIndex(t *testing.T) {
 }
 
 func TestWatch(t *testing.T) {
-	_, codecs := testScheme(t)
+	scheme, codecs := testScheme(t)
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
 	server := etcdtesting.NewEtcdTestClientServer(t)
 	defer server.Terminate(t)
 	key := "/some/key"
-	h := newEtcdHelper(server.Client, codec, etcdtest.PathPrefix())
+	h := newEtcdHelper(server.Client, scheme, codec, etcdtest.PathPrefix())
 
 	watching, err := h.Watch(context.TODO(), key, "0", storage.Everything)
 	if err != nil {
@@ -339,13 +339,13 @@ func TestWatch(t *testing.T) {
 }
 
 func TestWatchEtcdState(t *testing.T) {
-	_, codecs := testScheme(t)
+	scheme, codecs := testScheme(t)
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
 	key := "/somekey/foo"
 	server := etcdtesting.NewEtcdTestClientServer(t)
 	defer server.Terminate(t)
 
-	h := newEtcdHelper(server.Client, codec, etcdtest.PathPrefix())
+	h := newEtcdHelper(server.Client, scheme, codec, etcdtest.PathPrefix())
 	watching, err := h.Watch(context.TODO(), key, "0", storage.Everything)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
@@ -373,7 +373,12 @@ func TestWatchEtcdState(t *testing.T) {
 
 	// CAS the previous value
 	updateFn := func(input runtime.Object, res storage.ResponseMeta) (runtime.Object, *uint64, error) {
-		return pod.DeepCopyObject(), nil, nil
+		newObj, err := scheme.DeepCopy(pod)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+			return nil, nil, err
+		}
+		return newObj.(*example.Pod), nil, nil
 	}
 	err = h.GuaranteedUpdate(context.TODO(), key, &example.Pod{}, false, nil, updateFn)
 	if err != nil {
@@ -391,7 +396,7 @@ func TestWatchEtcdState(t *testing.T) {
 }
 
 func TestWatchFromZeroIndex(t *testing.T) {
-	_, codecs := testScheme(t)
+	scheme, codecs := testScheme(t)
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
 	pod := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}}
 
@@ -399,7 +404,7 @@ func TestWatchFromZeroIndex(t *testing.T) {
 	server := etcdtesting.NewEtcdTestClientServer(t)
 	defer server.Terminate(t)
 
-	h := newEtcdHelper(server.Client, codec, etcdtest.PathPrefix())
+	h := newEtcdHelper(server.Client, scheme, codec, etcdtest.PathPrefix())
 
 	// set before the watch and verify events
 	err := h.Create(context.TODO(), key, pod, pod, 0)
@@ -465,12 +470,12 @@ func TestWatchFromZeroIndex(t *testing.T) {
 }
 
 func TestWatchListFromZeroIndex(t *testing.T) {
-	_, codecs := testScheme(t)
+	scheme, codecs := testScheme(t)
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
 	prefix := "/some/key"
 	server := etcdtesting.NewEtcdTestClientServer(t)
 	defer server.Terminate(t)
-	h := newEtcdHelper(server.Client, codec, prefix)
+	h := newEtcdHelper(server.Client, scheme, codec, prefix)
 
 	watching, err := h.WatchList(context.TODO(), "/", "0", storage.Everything)
 	if err != nil {
@@ -496,13 +501,13 @@ func TestWatchListFromZeroIndex(t *testing.T) {
 }
 
 func TestWatchListIgnoresRootKey(t *testing.T) {
-	_, codecs := testScheme(t)
+	scheme, codecs := testScheme(t)
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
 	pod := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}}
 	key := "/some/key"
 	server := etcdtesting.NewEtcdTestClientServer(t)
 	defer server.Terminate(t)
-	h := newEtcdHelper(server.Client, codec, key)
+	h := newEtcdHelper(server.Client, scheme, codec, key)
 
 	watching, err := h.WatchList(context.TODO(), key, "0", storage.Everything)
 	if err != nil {
@@ -528,12 +533,12 @@ func TestWatchListIgnoresRootKey(t *testing.T) {
 }
 
 func TestWatchPurposefulShutdown(t *testing.T) {
-	_, codecs := testScheme(t)
+	scheme, codecs := testScheme(t)
 	codec := codecs.LegacyCodec(schema.GroupVersion{Version: "v1"})
 	server := etcdtesting.NewEtcdTestClientServer(t)
 	defer server.Terminate(t)
 	key := "/some/key"
-	h := newEtcdHelper(server.Client, codec, etcdtest.PathPrefix())
+	h := newEtcdHelper(server.Client, scheme, codec, etcdtest.PathPrefix())
 
 	// Test purposeful shutdown
 	watching, err := h.Watch(context.TODO(), key, "0", storage.Everything)

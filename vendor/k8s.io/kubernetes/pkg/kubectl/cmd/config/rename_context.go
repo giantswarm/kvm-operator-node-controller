@@ -70,7 +70,7 @@ func NewCmdConfigRenameContext(out io.Writer, configAccess clientcmd.ConfigAcces
 				cmdutil.CheckErr(err)
 			}
 			if err := options.Validate(); err != nil {
-				cmdutil.UsageErrorf(cmd, err.Error())
+				cmdutil.UsageError(cmd, err.Error())
 			}
 			if err := options.RunRenameContext(out); err != nil {
 				cmdutil.CheckErr(err)
@@ -83,7 +83,8 @@ func NewCmdConfigRenameContext(out io.Writer, configAccess clientcmd.ConfigAcces
 // Complete assigns RenameContextOptions from the args.
 func (o *RenameContextOptions) Complete(cmd *cobra.Command, args []string, out io.Writer) error {
 	if len(args) != 2 {
-		return helpErrorf(cmd, "Unexpected args: %v", args)
+		cmd.Help()
+		return fmt.Errorf("Unexpected args: %v", args)
 	}
 
 	o.contextName = args[0]

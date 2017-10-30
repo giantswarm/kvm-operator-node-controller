@@ -19,25 +19,32 @@ package provider
 import (
 	"errors"
 
-	"github.com/golang/glog"
-	"k8s.io/api/core/v1"
+	"github.com/giantswarm/microerror"
+	"github.com/giantswarm/micrologger"
 	apierr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/kubernetes/pkg/api/v1"
 	podutilv1 "k8s.io/kubernetes/pkg/api/v1/pod"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	"k8s.io/kubernetes/pkg/cloudprovider"
 )
 
 type instances struct {
 	client    clientset.Interface
 	namespace string
+	logger    micrologger.Logger
 }
 
-func newInstances(client clientset.Interface, namespace string) cloudprovider.Instances {
+func newInstances(
+	client clientset.Interface,
+	namespace string,
+	logger micrologger.Logger) cloudprovider.Instances {
+
 	return &instances{
 		client:    client,
 		namespace: namespace,
+		logger:    logger,
 	}
 }
 
@@ -50,25 +57,25 @@ func (i *instances) AddSSHKeyToAllInstances(user string, keyData []byte) error {
 // returned error will be cloudprovider.InstanceNotFound.
 func (i *instances) ExternalID(nodeName types.NodeName) (string, error) {
 	// Try to get requested pod in namespace.
-	glog.Infof("Checking pod %s in namespace %s.", string(nodeName), i.namespace)
+	i.logger.Log("info", "checking pod", "pod", string(nodeName), "namespace", i.namespace)
 	pod, err := i.client.CoreV1().Pods(i.namespace).Get(string(nodeName), metav1.GetOptions{})
 
 	if apierr.IsNotFound(err) {
 		// Handle not found error.
-		glog.Infof("Pod %s not found in namespace %s.", string(nodeName), i.namespace)
+		i.logger.Log("info", "pod not found", "pod", string(nodeName), "namespace", i.namespace)
 		return "", cloudprovider.InstanceNotFound
 	} else if err != nil {
 		// Handle other errors.
-		glog.Errorf("Error getting pod %s: %v.", string(nodeName), err)
+		i.logger.Log("error", "can not get pod", "pod", string(nodeName), "trace", microerror.Mask(err))
 		return "", err
 	} else if !podutilv1.IsPodReady(pod) {
 		// Check if pod is not ready. e.g. if pod stuck in Terminating state or CrashLoopBackoff.
-		glog.Infof("Pod %s in namespace %s is not ready.\n", string(nodeName), i.namespace)
+		i.logger.Log("info", "pod not ready", "pod", string(nodeName), "namespace", i.namespace)
 		return "", cloudprovider.InstanceNotFound
 	}
 
 	// Finally if none of conditions above are met return that pod is OK.
-	glog.Infof("Pod %s in namespace %s is ready.\n", string(nodeName), i.namespace)
+	i.logger.Log("info", "pod is ready", "pod", string(nodeName), "namespace", i.namespace)
 	return string(nodeName), nil
 }
 

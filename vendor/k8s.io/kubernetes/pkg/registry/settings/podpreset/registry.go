@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/settings"
 )
 
@@ -61,7 +62,7 @@ func (s *storage) CreatePodPreset(ctx genericapirequest.Context, pp *settings.Po
 }
 
 func (s *storage) UpdatePodPreset(ctx genericapirequest.Context, pp *settings.PodPreset) error {
-	_, _, err := s.Update(ctx, pp.Name, rest.DefaultUpdatedObjectInfo(pp))
+	_, _, err := s.Update(ctx, pp.Name, rest.DefaultUpdatedObjectInfo(pp, api.Scheme))
 	return err
 }
 

@@ -17,12 +17,14 @@ limitations under the License.
 package provider
 
 import (
+	"fmt"
 	"io"
 	"os"
 
-	"github.com/golang/glog"
-	clientset "k8s.io/client-go/kubernetes"
+	"github.com/giantswarm/microerror"
+	"github.com/giantswarm/micrologger"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	"k8s.io/kubernetes/pkg/cloudprovider"
 	"k8s.io/kubernetes/pkg/controller"
 )
@@ -34,13 +36,21 @@ const providerNamespaceEnv string = "PROVIDER_HOST_CLUSTER_NAMESPACE"
 type cloud struct {
 	client    clientset.Interface
 	instances cloudprovider.Instances
+	logger    micrologger.Logger
 }
 
 func newCloud(config io.Reader) (cloudprovider.Interface, error) {
+	// Initialize logger.
+	logger, err := micrologger.New(micrologger.DefaultConfig())
+	if err != nil {
+		microerror.Mask(err)
+	}
+
 	// Check if namespace is set.
 	namespace := os.Getenv(providerNamespaceEnv)
 	if namespace == "" {
-		glog.Fatalf("Error: Please specify host cluster namespace via %s.\n", providerNamespaceEnv)
+		err := fmt.Errorf("please specify host cluster namespace via %s", providerNamespaceEnv)
+		return nil, err
 	}
 
 	// Get kubeconfig for host cluster.
@@ -48,24 +58,25 @@ func newCloud(config io.Reader) (cloudprovider.Interface, error) {
 	// so by default in-cluster configuration will be used.
 	kubeconfig := os.Getenv(providerKubeconfigEnv)
 	if kubeconfig == "" {
-		glog.Infof("%s is not set. Will try to use in-cluster config.\n", providerKubeconfigEnv)
+		logger.Log("info", "trying to use in-cluster config")
 	}
 
 	// Create kubeclient config.
 	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
-		glog.Fatal(err)
+		microerror.Mask(err)
 	}
 
 	// Create the client.
 	hostClient, err := clientset.NewForConfig(cfg)
 	if err != nil {
-		glog.Fatal(err)
+		microerror.Mask(err)
 	}
 
 	return &cloud{
 		client:    hostClient,
-		instances: newInstances(hostClient, namespace),
+		instances: newInstances(hostClient, namespace, logger),
+		logger:    logger,
 	}, nil
 }
 

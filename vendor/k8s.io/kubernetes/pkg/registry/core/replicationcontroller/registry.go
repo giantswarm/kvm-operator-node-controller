@@ -82,7 +82,7 @@ func (s *storage) CreateController(ctx genericapirequest.Context, controller *ap
 }
 
 func (s *storage) UpdateController(ctx genericapirequest.Context, controller *api.ReplicationController) (*api.ReplicationController, error) {
-	obj, _, err := s.Update(ctx, controller.Name, rest.DefaultUpdatedObjectInfo(controller))
+	obj, _, err := s.Update(ctx, controller.Name, rest.DefaultUpdatedObjectInfo(controller, api.Scheme))
 	if err != nil {
 		return nil, err
 	}

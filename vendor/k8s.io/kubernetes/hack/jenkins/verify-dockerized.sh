@@ -27,7 +27,7 @@ retry() {
 }
 
 # This script is intended to be run from kubekins-test container with a
-# kubernetes repo mapped in. See k8s.io/test-infra/scenarios/kubernetes_verify.py
+# kubernetes repo mapped in. See hack/jenkins/gotest-dockerized.sh
 
 export PATH=${GOPATH}/bin:${PWD}/third_party/etcd:/usr/local/go/bin:${PATH}
 

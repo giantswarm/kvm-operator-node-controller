@@ -22,15 +22,8 @@ KUBE_ROOT=$(dirname "${BASH_SOURCE}")/..
 source "${KUBE_ROOT}/hack/lib/init.sh"
 source "${KUBE_ROOT}/hack/lib/util.sh"
 
-kube::log::status "Restoring kubernetes godeps"
+kube::util::ensure_godep_version v79
 
-if kube::util::godep_restored >/dev/null 2>&1; then
-    kube::log::status "Dependencies appear to be current - skipping download"
-    exit 0
-fi
-
-kube::util::ensure_godep_version
-
-kube::log::status "Downloading dependencies - this might take a while"
-GOPATH="${GOPATH}:${KUBE_ROOT}/staging" godep restore "$@"
-kube::log::status "Done"
+echo "Starting to download all kubernetes godeps. This takes a while"
+GOPATH=${GOPATH}:${KUBE_ROOT}/staging godep restore "$@"
+echo "Download finished"

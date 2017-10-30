@@ -24,7 +24,7 @@ import (
 	"strconv"
 	"strings"
 
-	"k8s.io/api/core/v1"
+	"k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/cloudprovider"
 
 	"github.com/Azure/azure-sdk-for-go/arm/compute"
@@ -46,7 +46,7 @@ const (
 	securityRuleIDTemplate      = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/networkSecurityGroups/%s/securityRules/%s"
 )
 
-var providerIDRE = regexp.MustCompile(`^` + CloudProviderName + `://(?:.*)/Microsoft.Compute/virtualMachines/(.+)$`)
+var providerIDRE = regexp.MustCompile(`^` + CloudProviderName + `://(.+)$`)
 
 // returns the full identifier of a machine
 func (az *Cloud) getMachineID(machineName string) string {
@@ -195,11 +195,8 @@ func getBackendPoolName(clusterName string) string {
 	return clusterName
 }
 
-func getLoadBalancerRuleName(service *v1.Service, port v1.ServicePort, subnetName *string) string {
-	if subnetName == nil {
-		return fmt.Sprintf("%s-%s-%d", getRulePrefix(service), port.Protocol, port.Port)
-	}
-	return fmt.Sprintf("%s-%s-%s-%d", getRulePrefix(service), *subnetName, port.Protocol, port.Port)
+func getLoadBalancerRuleName(service *v1.Service, port v1.ServicePort) string {
+	return fmt.Sprintf("%s-%s-%d", getRulePrefix(service), port.Protocol, port.Port)
 }
 
 func getSecurityRuleName(service *v1.Service, port v1.ServicePort, sourceAddrPrefix string) string {
@@ -227,17 +224,8 @@ func serviceOwnsRule(service *v1.Service, rule string) bool {
 	return strings.HasPrefix(strings.ToUpper(rule), strings.ToUpper(prefix))
 }
 
-func serviceOwnsFrontendIP(fip network.FrontendIPConfiguration, service *v1.Service) bool {
-	baseName := cloudprovider.GetLoadBalancerName(service)
-	return strings.HasPrefix(*fip.Name, baseName)
-}
-
-func getFrontendIPConfigName(service *v1.Service, subnetName *string) string {
-	baseName := cloudprovider.GetLoadBalancerName(service)
-	if subnetName != nil {
-		return fmt.Sprintf("%s-%s", baseName, *subnetName)
-	}
-	return baseName
+func getFrontendIPConfigName(service *v1.Service) string {
+	return cloudprovider.GetLoadBalancerName(service)
 }
 
 // This returns the next available rule priority level for a given set of security rules.
@@ -261,7 +249,6 @@ outer:
 }
 
 func (az *Cloud) getIPForMachine(nodeName types.NodeName) (string, error) {
-	az.operationPollRateLimiter.Accept()
 	machine, exists, err := az.getVirtualMachine(nodeName)
 	if !exists {
 		return "", cloudprovider.InstanceNotFound
@@ -284,9 +271,7 @@ func (az *Cloud) getIPForMachine(nodeName types.NodeName) (string, error) {
 	}
 
 	az.operationPollRateLimiter.Accept()
-	glog.V(10).Infof("InterfacesClient.Get(%q): start", nicName)
 	nic, err := az.InterfacesClient.Get(az.ResourceGroup, nicName, "")
-	glog.V(10).Infof("InterfacesClient.Get(%q): end", nicName)
 	if err != nil {
 		glog.Errorf("error: az.getIPForMachine(%s), az.InterfacesClient.Get(%s, %s, %s), err=%v", nodeName, az.ResourceGroup, nicName, "", err)
 		return "", err

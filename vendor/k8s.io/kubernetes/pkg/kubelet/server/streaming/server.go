@@ -101,7 +101,7 @@ var DefaultConfig = Config{
 	SupportedPortForwardProtocols:   portforward.SupportedProtocols,
 }
 
-// TODO(tallclair): Add auth(n/z) interface & handling.
+// TODO(timstclair): Add auth(n/z) interface & handling.
 func NewServer(config Config, runtime Runtime) (Server, error) {
 	s := &server{
 		config:  config,
@@ -141,11 +141,6 @@ func NewServer(config Config, runtime Runtime) (Server, error) {
 	handler := restful.NewContainer()
 	handler.Add(ws)
 	s.handler = handler
-	s.server = &http.Server{
-		Addr:      s.config.Addr,
-		Handler:   s.handler,
-		TLSConfig: s.config.TLSConfig,
-	}
 
 	return s, nil
 }
@@ -155,27 +150,11 @@ type server struct {
 	runtime *criAdapter
 	handler http.Handler
 	cache   *requestCache
-	server  *http.Server
-}
-
-func validateExecRequest(req *runtimeapi.ExecRequest) error {
-	if req.ContainerId == "" {
-		return grpc.Errorf(codes.InvalidArgument, "missing required container_id")
-	}
-	if req.Tty && req.Stderr {
-		// If TTY is set, stderr cannot be true because multiplexing is not
-		// supported.
-		return grpc.Errorf(codes.InvalidArgument, "tty and stderr cannot both be true")
-	}
-	if !req.Stdin && !req.Stdout && !req.Stderr {
-		return grpc.Errorf(codes.InvalidArgument, "one of stdin, stdout, or stderr must be set")
-	}
-	return nil
 }
 
 func (s *server) GetExec(req *runtimeapi.ExecRequest) (*runtimeapi.ExecResponse, error) {
-	if err := validateExecRequest(req); err != nil {
-		return nil, err
+	if req.ContainerId == "" {
+		return nil, grpc.Errorf(codes.InvalidArgument, "missing required container_id")
 	}
 	token, err := s.cache.Insert(req)
 	if err != nil {
@@ -186,24 +165,9 @@ func (s *server) GetExec(req *runtimeapi.ExecRequest) (*runtimeapi.ExecResponse,
 	}, nil
 }
 
-func validateAttachRequest(req *runtimeapi.AttachRequest) error {
-	if req.ContainerId == "" {
-		return grpc.Errorf(codes.InvalidArgument, "missing required container_id")
-	}
-	if req.Tty && req.Stderr {
-		// If TTY is set, stderr cannot be true because multiplexing is not
-		// supported.
-		return grpc.Errorf(codes.InvalidArgument, "tty and stderr cannot both be true")
-	}
-	if !req.Stdin && !req.Stdout && !req.Stderr {
-		return grpc.Errorf(codes.InvalidArgument, "one of stdin, stdout, and stderr must be set")
-	}
-	return nil
-}
-
 func (s *server) GetAttach(req *runtimeapi.AttachRequest) (*runtimeapi.AttachResponse, error) {
-	if err := validateAttachRequest(req); err != nil {
-		return nil, err
+	if req.ContainerId == "" {
+		return nil, grpc.Errorf(codes.InvalidArgument, "missing required container_id")
 	}
 	token, err := s.cache.Insert(req)
 	if err != nil {
@@ -229,19 +193,25 @@ func (s *server) GetPortForward(req *runtimeapi.PortForwardRequest) (*runtimeapi
 
 func (s *server) Start(stayUp bool) error {
 	if !stayUp {
-		// TODO(tallclair): Implement this.
+		// TODO(timstclair): Implement this.
 		return errors.New("stayUp=false is not yet implemented")
 	}
 
+	server := &http.Server{
+		Addr:      s.config.Addr,
+		Handler:   s.handler,
+		TLSConfig: s.config.TLSConfig,
+	}
 	if s.config.TLSConfig != nil {
-		return s.server.ListenAndServeTLS("", "") // Use certs from TLSConfig.
+		return server.ListenAndServeTLS("", "") // Use certs from TLSConfig.
 	} else {
-		return s.server.ListenAndServe()
+		return server.ListenAndServe()
 	}
 }
 
 func (s *server) Stop() error {
-	return s.server.Close()
+	// TODO(timstclair): Implement this.
+	return errors.New("not yet implemented")
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -269,8 +239,8 @@ func (s *server) serveExec(req *restful.Request, resp *restful.Response) {
 
 	streamOpts := &remotecommandserver.Options{
 		Stdin:  exec.Stdin,
-		Stdout: exec.Stdout,
-		Stderr: exec.Stderr,
+		Stdout: true,
+		Stderr: !exec.Tty,
 		TTY:    exec.Tty,
 	}
 
@@ -303,8 +273,8 @@ func (s *server) serveAttach(req *restful.Request, resp *restful.Response) {
 
 	streamOpts := &remotecommandserver.Options{
 		Stdin:  attach.Stdin,
-		Stdout: attach.Stdout,
-		Stderr: attach.Stderr,
+		Stdout: true,
+		Stderr: !attach.Tty,
 		TTY:    attach.Tty,
 	}
 	remotecommandserver.ServeAttach(

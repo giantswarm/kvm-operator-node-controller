@@ -336,19 +336,11 @@ func (m *Mock) MethodCalled(methodName string, arguments ...interface{}) Argumen
 		<-call.WaitFor
 	}
 
-	m.mutex.Lock()
-	runFn := call.RunFn
-	m.mutex.Unlock()
-
-	if runFn != nil {
-		runFn(arguments)
+	if call.RunFn != nil {
+		call.RunFn(arguments)
 	}
 
-	m.mutex.Lock()
-	returnArgs := call.ReturnArguments
-	m.mutex.Unlock()
-
-	return returnArgs
+	return call.ReturnArguments
 }
 
 /*

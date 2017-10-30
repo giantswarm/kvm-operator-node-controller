@@ -27,7 +27,8 @@ import (
 )
 
 const (
-	compactRevKey = "compact_rev_key"
+	compactInterval = 5 * time.Minute
+	compactRevKey   = "compact_rev_key"
 )
 
 var (
@@ -43,7 +44,7 @@ func init() {
 // By default, we save the most recent 10 minutes data and compact versions > 10minutes ago.
 // It should be enough for slow watchers and to tolerate burst.
 // TODO: We might keep a longer history (12h) in the future once storage API can take advantage of past version of keys.
-func StartCompactor(ctx context.Context, client *clientv3.Client, compactInterval time.Duration) {
+func StartCompactor(ctx context.Context, client *clientv3.Client) {
 	endpointsMapMu.Lock()
 	defer endpointsMapMu.Unlock()
 
@@ -59,9 +60,7 @@ func StartCompactor(ctx context.Context, client *clientv3.Client, compactInterva
 		endpointsMap[ep] = struct{}{}
 	}
 
-	if compactInterval != 0 {
-		go compactor(ctx, client, compactInterval)
-	}
+	go compactor(ctx, client, compactInterval)
 }
 
 // compactor periodically compacts historical versions of keys in etcd.
@@ -157,6 +156,6 @@ func compact(ctx context.Context, client *clientv3.Client, t, rev int64) (int64,
 	if _, err = client.Compact(ctx, rev); err != nil {
 		return curTime, curRev, err
 	}
-	glog.V(4).Infof("etcd: compacted rev (%d), endpoints (%v)", rev, client.Endpoints())
+	glog.Infof("etcd: compacted rev (%d), endpoints (%v)", rev, client.Endpoints())
 	return curTime, curRev, nil
 }

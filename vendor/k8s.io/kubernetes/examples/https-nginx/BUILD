@@ -1,5 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["notice"])
+
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_binary",
@@ -8,14 +10,14 @@ load(
 
 go_binary(
     name = "https-nginx",
-    importpath = "k8s.io/kubernetes/examples/https-nginx",
     library = ":go_default_library",
+    tags = ["automanaged"],
 )
 
 go_library(
     name = "go_default_library",
     srcs = ["make_secret.go"],
-    importpath = "k8s.io/kubernetes/examples/https-nginx",
+    tags = ["automanaged"],
     deps = [
         "//pkg/api:go_default_library",
         "//pkg/api/install:go_default_library",

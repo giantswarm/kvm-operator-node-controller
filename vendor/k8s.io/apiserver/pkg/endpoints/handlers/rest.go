@@ -46,7 +46,6 @@ import (
 	"k8s.io/apiserver/pkg/audit"
 	"k8s.io/apiserver/pkg/endpoints/handlers/negotiation"
 	"k8s.io/apiserver/pkg/endpoints/handlers/responsewriters"
-	"k8s.io/apiserver/pkg/endpoints/metrics"
 	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
 	utiltrace "k8s.io/apiserver/pkg/util/trace"
@@ -63,6 +62,7 @@ type RequestScope struct {
 	Creater         runtime.ObjectCreater
 	Convertor       runtime.ObjectConvertor
 	Defaulter       runtime.ObjectDefaulter
+	Copier          runtime.ObjectCopier
 	Typer           runtime.ObjectTyper
 	UnsafeConvertor runtime.ObjectConvertor
 
@@ -212,20 +212,7 @@ func getRequestOptions(req *http.Request, scope RequestScope, into runtime.Objec
 		if isSubresource {
 			startingIndex = 3
 		}
-
-		p := strings.Join(requestInfo.Parts[startingIndex:], "/")
-
-		// ensure non-empty subpaths correctly reflect a leading slash
-		if len(p) > 0 && !strings.HasPrefix(p, "/") {
-			p = "/" + p
-		}
-
-		// ensure subpaths correctly reflect the presence of a trailing slash on the original request
-		if strings.HasSuffix(requestInfo.Path, "/") && !strings.HasSuffix(p, "/") {
-			p += "/"
-		}
-
-		newQuery[subpathKey] = []string{p}
+		newQuery[subpathKey] = []string{strings.Join(requestInfo.Parts[startingIndex:], "/")}
 		query = newQuery
 	}
 	return scope.ParameterCodec.DecodeParameters(query, scope.Kind.GroupVersion(), into)
@@ -261,15 +248,12 @@ func ConnectResource(connecter rest.Connecter, scope RequestScope, admit admissi
 				return
 			}
 		}
-		requestInfo, _ := request.RequestInfoFrom(ctx)
-		metrics.RecordLongRunning(req, requestInfo, func() {
-			handler, err := connecter.Connect(ctx, name, opts, &responder{scope: scope, req: req, w: w})
-			if err != nil {
-				scope.err(err, w, req)
-				return
-			}
-			handler.ServeHTTP(w, req)
-		})
+		handler, err := connecter.Connect(ctx, name, opts, &responder{scope: scope, req: req, w: w})
+		if err != nil {
+			scope.err(err, w, req)
+			return
+		}
+		handler.ServeHTTP(w, req)
 	}
 }
 
@@ -301,7 +285,7 @@ func ListResource(r rest.Lister, rw rest.Watcher, scope RequestScope, forceWatch
 		}
 
 		// Watches for single objects are routed to this function.
-		// Treat a name parameter the same as a field selector entry.
+		// Treat a /name parameter the same as a field selector entry.
 		hasName := true
 		_, name, err := scope.Namer.Name(req)
 		if err != nil {
@@ -369,10 +353,7 @@ func ListResource(r rest.Lister, rw rest.Watcher, scope RequestScope, forceWatch
 				scope.err(err, w, req)
 				return
 			}
-			requestInfo, _ := request.RequestInfoFrom(ctx)
-			metrics.RecordLongRunning(req, requestInfo, func() {
-				serveWatch(watcher, scope, req, w, timeout)
-			})
+			serveWatch(watcher, scope, req, w, timeout)
 			return
 		}
 
@@ -593,7 +574,7 @@ func PatchResource(r rest.Patcher, scope RequestScope, admit admission.Interface
 		}
 
 		result, err := patchResource(ctx, updateAdmit, timeout, versionedObj, r, name, patchType, patchJS,
-			scope.Namer, scope.Creater, scope.Defaulter, scope.UnsafeConvertor, scope.Kind, scope.Resource, codec)
+			scope.Namer, scope.Copier, scope.Creater, scope.Defaulter, scope.UnsafeConvertor, scope.Kind, scope.Resource, codec)
 		if err != nil {
 			scope.err(err, w, req)
 			return
@@ -626,6 +607,7 @@ func patchResource(
 	patchType types.PatchType,
 	patchJS []byte,
 	namer ScopeNamer,
+	copier runtime.ObjectCopier,
 	creater runtime.ObjectCreater,
 	defaulter runtime.ObjectDefaulter,
 	unsafeConvertor runtime.ObjectConvertor,
@@ -712,8 +694,8 @@ func patchResource(
 					return nil, err
 				}
 				// Capture the original object map and patch for possible retries.
-				originalMap, err := unstructured.DefaultConverter.ToUnstructured(currentVersionedObject)
-				if err != nil {
+				originalMap := make(map[string]interface{})
+				if err := unstructured.DefaultConverter.ToUnstructured(currentVersionedObject, &originalMap); err != nil {
 					return nil, err
 				}
 				if err := strategicPatchObject(codec, defaulter, currentVersionedObject, patchJS, versionedObjToUpdate, versionedObj); err != nil {
@@ -752,14 +734,15 @@ func patchResource(
 			// 3. ensure no conflicts between the two patches
 			// 4. apply the #1 patch to the currentJS object
 
+			currentObjMap := make(map[string]interface{})
+
 			// Since the patch is applied on versioned objects, we need to convert the
 			// current object to versioned representation first.
 			currentVersionedObject, err := unsafeConvertor.ConvertToVersion(currentObject, kind.GroupVersion())
 			if err != nil {
 				return nil, err
 			}
-			currentObjMap, err := unstructured.DefaultConverter.ToUnstructured(currentVersionedObject)
-			if err != nil {
+			if err := unstructured.DefaultConverter.ToUnstructured(currentVersionedObject, &currentObjMap); err != nil {
 				return nil, err
 			}
 
@@ -835,7 +818,7 @@ func patchResource(
 		return patchedObject, admit(patchedObject, currentObject)
 	}
 
-	updatedObjectInfo := rest.DefaultUpdatedObjectInfo(nil, applyPatch, applyAdmission)
+	updatedObjectInfo := rest.DefaultUpdatedObjectInfo(nil, copier, applyPatch, applyAdmission)
 
 	return finishRequest(timeout, func() (runtime.Object, error) {
 		updateObject, _, updateErr := patcher.Update(ctx, name, updatedObjectInfo)
@@ -912,7 +895,7 @@ func UpdateResource(r rest.Updater, scope RequestScope, typer runtime.ObjectType
 		trace.Step("About to store object in database")
 		wasCreated := false
 		result, err := finishRequest(timeout, func() (runtime.Object, error) {
-			obj, created, err := r.Update(ctx, name, rest.DefaultUpdatedObjectInfo(obj, transformers...))
+			obj, created, err := r.Update(ctx, name, rest.DefaultUpdatedObjectInfo(obj, scope.Copier, transformers...))
 			wasCreated = created
 			return obj, err
 		})
@@ -985,11 +968,9 @@ func DeleteResource(r rest.GracefulDeleter, allowsOptions bool, scope RequestSco
 					scope.err(fmt.Errorf("decoded object cannot be converted to DeleteOptions"), w, req)
 					return
 				}
-				trace.Step("Decoded delete options")
 
 				ae := request.AuditEventFrom(ctx)
 				audit.LogRequestObject(ae, obj, scope.Resource, scope.Subresource, scope.Serializer)
-				trace.Step("Recorded the audit event")
 			} else {
 				if values := req.URL.Query(); len(values) > 0 {
 					if err := metainternalversion.ParameterCodec.DecodeParameters(values, scope.MetaGroupVersion, options); err != nil {
@@ -1001,7 +982,6 @@ func DeleteResource(r rest.GracefulDeleter, allowsOptions bool, scope RequestSco
 			}
 		}
 
-		trace.Step("About to check admission control")
 		if admit != nil && admit.Handles(admission.Delete) {
 			userInfo, _ := request.UserFrom(ctx)
 
@@ -1012,7 +992,7 @@ func DeleteResource(r rest.GracefulDeleter, allowsOptions bool, scope RequestSco
 			}
 		}
 
-		trace.Step("About to delete object from database")
+		trace.Step("About do delete object from database")
 		wasDeleted := true
 		result, err := finishRequest(timeout, func() (runtime.Object, error) {
 			obj, deleted, err := r.Delete(ctx, name, options)

@@ -19,6 +19,7 @@ spec:
       - name: wardle-server
         image: kube-sample-apiserver:latest
         imagePullPolicy: Never
-        command: [ "/kube-sample-apiserver", "--etcd-servers=http://localhost:2379" ]
+        args:
+        - "--etcd-servers=http://localhost:2379"
       - name: etcd
-        image: quay.io/coreos/etcd:v3.1.10
+        image: quay.io/coreos/etcd:v3.0.17
