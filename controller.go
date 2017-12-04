@@ -19,6 +19,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"runtime"
 	"time"
@@ -299,6 +300,9 @@ func newGuestClientFromSecret(clusterAPI, clusterID string) (clientset.Interface
 			CAData:   secret.Data[string(certificatetpr.CA)],
 		},
 		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+		},
 	}
 
 	client, err := clientset.NewForConfig(restConfig)
