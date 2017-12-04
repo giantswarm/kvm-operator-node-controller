@@ -298,6 +298,7 @@ func newGuestClientFromSecret(clusterAPI, clusterID string) (clientset.Interface
 			KeyData:  secret.Data[string(certificatetpr.Key)],
 			CAData:   secret.Data[string(certificatetpr.CA)],
 		},
+		Timeout: 30 * time.Second,
 	}
 
 	client, err := clientset.NewForConfig(restConfig)
