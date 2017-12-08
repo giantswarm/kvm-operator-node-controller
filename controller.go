@@ -60,8 +60,8 @@ var (
 )
 
 type controller struct {
-	kubeClient        clientset.Interface
-	cloud             cloudprovider.Interface
+	clusterAPI        string
+	clusterID         string
 	nodeMonitorPeriod time.Duration
 	logger            micrologger.Logger
 }
@@ -98,20 +98,8 @@ func main() {
 		panic(fmt.Sprint("guest cluster api and id must be set"))
 	}
 
-	// Get guest cluster client.
-	kubeClient, err := newGuestClientFromSecret(clusterAPI, clusterID)
-	if err != nil {
-		panic(fmt.Sprintf("failed to initialize kubernetes client: %v", err))
-	}
-
-	// Initialize kubernetes provider.
-	cloud, err := cloudprovider.InitCloudProvider("kubernetes", "")
-	if err != nil {
-		panic(fmt.Sprintf("failed to initialize cloud provider: %v", err))
-	}
-
 	// Create controller instance.
-	controller := newController(kubeClient, cloud, nodeMonitorPeriod)
+	controller := newController(clusterAPI, clusterID, nodeMonitorPeriod)
 
 	// Start the kvm-operator node controller.
 	stop := make(chan struct{})
@@ -124,8 +112,8 @@ func main() {
 
 // Creates new instance of controller.
 func newController(
-	kubeClient clientset.Interface,
-	cloud cloudprovider.Interface,
+	clusterAPI string,
+	clusterID string,
 	nodeMonitorPeriod time.Duration) *controller {
 
 	logger, err := micrologger.New(micrologger.DefaultConfig())
@@ -134,8 +122,8 @@ func newController(
 	}
 
 	return &controller{
-		kubeClient:        kubeClient,
-		cloud:             cloud,
+		clusterAPI:        clusterAPI,
+		clusterID:         clusterID,
 		nodeMonitorPeriod: nodeMonitorPeriod,
 		logger:            logger,
 	}
@@ -158,15 +146,27 @@ func (c *controller) Run(stopCh chan struct{}) {
 // Monitor node queries the cloudprovider for non-ready nodes and deletes them
 // if they cannot be found in the cloud provider.
 func (c *controller) MonitorNode() {
+	// Get guest cluster client.
+	kubeClient, err := newGuestClientFromSecret(c.clusterAPI, c.clusterID)
+	if err != nil {
+		c.logger.Log("error", "failed to reinitialize kubernetes client", "trace", microerror.Mask(err))
+	}
+
+	// Initialize kubernetes provider.
+	cloud, err := cloudprovider.InitCloudProvider("kubernetes", "")
+	if err != nil {
+		c.logger.Log("error", "failed to reinitialize cloud provider", "trace", microerror.Mask(err))
+	}
+
 	// Get nodes from cloud provider.
-	instances, ok := c.cloud.Instances()
+	instances, ok := cloud.Instances()
 	if !ok {
 		utilruntime.HandleError(fmt.Errorf("failed to get instances from cloud provider"))
 		return
 	}
 
 	// Get nodes known by kubernetes cluster.
-	nodes, err := c.kubeClient.CoreV1().Nodes().List(metav1.ListOptions{ResourceVersion: "0"})
+	nodes, err := kubeClient.CoreV1().Nodes().List(metav1.ListOptions{ResourceVersion: "0"})
 	if err != nil {
 		c.logger.Log("error", "error monitoring node status", "trace", microerror.Mask(err))
 		return
@@ -187,7 +187,7 @@ func (c *controller) MonitorNode() {
 				break
 			}
 			name := node.Name
-			node, err = c.kubeClient.CoreV1().Nodes().Get(name, metav1.GetOptions{})
+			node, err = kubeClient.CoreV1().Nodes().Get(name, metav1.GetOptions{})
 			if err != nil {
 				c.logger.Log(
 					"info", "failed while getting a node to retry updating NodeStatus. Probably node was deleted.",
@@ -229,7 +229,7 @@ func (c *controller) MonitorNode() {
 
 				go func(nodeName string) {
 					defer utilruntime.HandleCrash()
-					if err := c.kubeClient.CoreV1().Nodes().Delete(nodeName, nil); err != nil {
+					if err := kubeClient.CoreV1().Nodes().Delete(nodeName, nil); err != nil {
 						c.logger.Log(
 							"error", "unable to delete node",
 							"node", node.Name,
