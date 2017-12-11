@@ -145,6 +145,7 @@ func (c *controller) countErr() {
 func healthzHandler(w http.ResponseWriter, r *http.Request) {
 	if atomic.LoadUint64(&errorCount) != 0 {
 		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
