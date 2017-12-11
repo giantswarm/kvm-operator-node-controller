@@ -19,8 +19,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"runtime"
+	"sync/atomic"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -58,6 +60,8 @@ var (
 	name        = "calico-node-controller"
 	source      = "https://github.com/giantswarm/calico-node-controller"
 )
+
+var errorCount uint64
 
 type controller struct {
 	kubeClient        clientset.Interface
@@ -118,8 +122,32 @@ func main() {
 	defer close(stop)
 	go controller.Run(stop)
 
+	// Start healthz endpoint.
+	go func() {
+		http.HandleFunc("/healthz", healthzHandler)
+
+		err := http.ListenAndServe(":8080", nil)
+		if err != nil {
+			panic(fmt.Sprintf("failed to setup healthz endpoint: %v", err))
+		}
+	}()
+
 	// Wait forever.
 	select {}
+}
+
+// Increments error count by 1.
+func (c *controller) countErr() {
+	atomic.AddUint64(&errorCount, 1)
+}
+
+// Return http 500 if error counter value is not 0.
+func healthzHandler(w http.ResponseWriter, r *http.Request) {
+	if atomic.LoadUint64(&errorCount) != 0 {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 // Creates new instance of controller.
@@ -162,6 +190,7 @@ func (c *controller) MonitorNode() {
 	instances, ok := c.cloud.Instances()
 	if !ok {
 		utilruntime.HandleError(fmt.Errorf("failed to get instances from cloud provider"))
+		c.countErr()
 		return
 	}
 
@@ -169,6 +198,7 @@ func (c *controller) MonitorNode() {
 	nodes, err := c.kubeClient.CoreV1().Nodes().List(metav1.ListOptions{ResourceVersion: "0"})
 	if err != nil {
 		c.logger.Log("error", "error monitoring node status", "trace", microerror.Mask(err))
+		c.countErr()
 		return
 	}
 
@@ -214,6 +244,7 @@ func (c *controller) MonitorNode() {
 						"node", node.Name,
 						"trace", microerror.Mask(err),
 					)
+					c.countErr()
 					continue
 				}
 
@@ -235,6 +266,7 @@ func (c *controller) MonitorNode() {
 							"node", node.Name,
 							"trace", microerror.Mask(err),
 						)
+						c.countErr()
 					}
 				}(node.Name)
 
