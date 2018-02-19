@@ -25,7 +25,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/api/v1"
-	podutilv1 "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	"k8s.io/kubernetes/pkg/cloudprovider"
 )
@@ -68,14 +67,14 @@ func (i *instances) ExternalID(nodeName types.NodeName) (string, error) {
 		// Handle other errors.
 		i.logger.Log("error", "can not get pod", "pod", string(nodeName), "trace", microerror.Mask(err))
 		return "", err
-	} else if !podutilv1.IsPodReady(pod) {
-		// Check if pod is not ready. e.g. if pod stuck in Terminating state or CrashLoopBackoff.
-		i.logger.Log("info", "pod not ready", "pod", string(nodeName), "namespace", i.namespace)
+	} else if pod.Status.Phase != v1.PodRunning {
+		// Check if pod phase is not running. e.g. if pod stuck in Terminating state or CrashLoopBackoff.
+		i.logger.Log("info", "pod not running", "pod", string(nodeName), "namespace", i.namespace)
 		return "", cloudprovider.InstanceNotFound
 	}
 
 	// Finally if none of conditions above are met return that pod is OK.
-	i.logger.Log("info", "pod is ready", "pod", string(nodeName), "namespace", i.namespace)
+	i.logger.Log("info", "pod is running", "pod", string(nodeName), "namespace", i.namespace)
 	return string(nodeName), nil
 }
 
