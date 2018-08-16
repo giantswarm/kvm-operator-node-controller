@@ -1,6 +1,6 @@
 # KVM operator node controller
 
-Manages Kubernetes nodes based on kvm-operator (host cluster) state.
+Manages Kubernetes nodes based on kvm-operator (control plane) state.
 
 This project implementes own stand-alone node controller and provider for kvm-operator.
 
